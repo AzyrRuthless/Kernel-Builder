@@ -2,7 +2,6 @@ version: 2.1
 
 jobs:
   build_kernel:
-    working_directory: /home/circleci/project
     docker:
       - image: cimg/base:2025.01
     environment:
@@ -13,6 +12,8 @@ jobs:
       KERNEL_BRANCH: Next
     steps:
       - checkout
+
+      - setup_remote_docker # Mengaktifkan Docker daemon terpisah
 
       - run:
           name: 🧰 Setup QEMU
