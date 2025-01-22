@@ -2,8 +2,8 @@ version: 2.1
 
 jobs:
   build_kernel:
-    docker:
-      - image: cimg/base:2024.01
+    machine:
+      image: ubuntu-2004:2023.07.1 # Gunakan image Ubuntu terbaru
     environment:
       PROJECT_NAME: KSU-Kinesis
       TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
