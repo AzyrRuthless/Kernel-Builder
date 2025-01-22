@@ -13,8 +13,6 @@ tg() {
   local msg="$1"
   local formatted_date=$(TZ=Asia/Jakarta date '+%Y-%m-%d %H:%M:%S')
   log "➡️ Sending Telegram message: $msg (at $formatted_date WIB)"
-  log "ℹ️ Telegram Bot Token: $TELEGRAM_BOT_TOKEN"
-  log "ℹ️ Telegram Chat ID: $TELEGRAM_CHAT_ID"
   curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
     -d chat_id="$TELEGRAM_CHAT_ID" \
     -d text="$msg - \`$formatted_date\`" \
@@ -26,8 +24,6 @@ tg_doc() {
   local file="$1"
   local caption="$2"
   log "➡️ Sending Telegram document: $file"
-  log "ℹ️ Telegram Bot Token: $TELEGRAM_BOT_TOKEN"
-  log "ℹ️ Telegram Chat ID: $TELEGRAM_CHAT_ID"
   if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
     -F chat_id="$TELEGRAM_CHAT_ID" \
     -F document="@$file" \
@@ -49,7 +45,6 @@ handle_error() {
 # --- Start the build process ---
 log "🚀 Starting build at $(date)"
 tg "🚀 Build started\!"
-log "ℹ️ Sending Telegram notification with token: $TELEGRAM_BOT_TOKEN and chat ID: $TELEGRAM_CHAT_ID"
 
 # --- Set working directory ---
 WORKDIR="$CIRCLE_WORKING_DIRECTORY/Kinesis_Kernel"
