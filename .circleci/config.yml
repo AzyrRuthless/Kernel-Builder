@@ -4,7 +4,7 @@ jobs:
   build_kernel:
     working_directory: /home/circleci/project
     docker:
-      - image: cimg/base:2025.01
+      - image: cimg/base:2024.01
     environment:
       PROJECT_NAME: KSU-Kinesis
       TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
@@ -58,7 +58,8 @@ jobs:
 
 workflows:
   build-workflow:
-    triggers:
-      - manual # Hanya bisa dijalankan secara manual
+    when: # Hanya jalankan workflow ini secara manual
+      and:
+        - equal: [ manual, << pipeline.trigger_source >> ]
     jobs:
       - build_kernel
