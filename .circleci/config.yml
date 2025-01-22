@@ -2,8 +2,8 @@ version: 2.1
 
 jobs:
   build_kernel:
-    machine:
-      image: ubuntu-2004:2023.07.1 # Gunakan image Ubuntu terbaru
+    docker:
+      - image: cimg/base:2024.01 # Gunakan image base yang ringan
     environment:
       PROJECT_NAME: KSU-Kinesis
       TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
@@ -12,6 +12,8 @@ jobs:
       KERNEL_BRANCH: Next
     steps:
       - checkout
+
+      - setup_remote_docker # Mengaktifkan Docker daemon terpisah
 
       - run:
           name: 🧰 Setup QEMU
