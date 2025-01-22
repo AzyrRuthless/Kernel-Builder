@@ -15,20 +15,20 @@ tg() {
   log "➡️ Sending Telegram message: $msg (at $formatted_date WIB)"
   curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
     -d chat_id="$TELEGRAM_CHAT_ID" \
-    -d text="$msg - \`$formatted_date\`" > /dev/null
+    -d text="$msg - \`$formatted_date\`" \
+    -d parse_mode="MarkdownV2" > /dev/null
 }
 
 # --- Function to send Telegram documents with error handling ---
 tg_doc() {
   local file="$1"
   local caption="$2"
-  local formatted_caption=$(printf '%q' "$caption")
   log "➡️ Sending Telegram document: $file"
   if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
     -F chat_id="$TELEGRAM_CHAT_ID" \
     -F document="@$file" \
-    -F parse_mode="MarkdownV2" \
-    -F caption="${formatted_caption}"; then
+    -F caption="$caption" \
+    -F parse_mode="MarkdownV2"; then
     log "❌ Failed to send Telegram document: $file"
     tg "❌ Failed to send Telegram document: $file"
   fi
@@ -45,6 +45,7 @@ handle_error() {
 # --- Start the build process ---
 log "🚀 Starting build at $(date)"
 tg "🚀 Build started\!"
+log "ℹ️ Sending Telegram notification with token: $TELEGRAM_BOT_TOKEN and chat ID: $TELEGRAM_CHAT_ID"
 
 # --- Set working directory ---
 WORKDIR="$CIRCLE_WORKING_DIRECTORY/Kinesis_Kernel"
@@ -237,10 +238,14 @@ log "🎉 Build completed in ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_
 log "📦 ZIP archive: $ZIP_NAME"
 
 tg "✅ Kernel compilation completed\! 🎉 File: \`$ZIP_NAME\`"
-tg_doc "$WORKDIR/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
+if [ -f "$WORKDIR/$ZIP_NAME" ]; then
+  tg_doc "$WORKDIR/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
+else
+  handle_error "File $ZIP_NAME not found!"
+fi
 
 # --- Upload artifacts ---
-ARTIFACT_DIR="$WORKDIR/kernel_artifacts"
+ARTIFACT_DIR="$CIRCLE_WORKING_DIRECTORY/kernel_artifacts"
 log "⬆️ Uploading artifacts to: $ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 cp "$WORKDIR/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
@@ -255,6 +260,3 @@ log "🔍 Contents of $WORKDIR/out/arch/arm64/boot/dts/qcom:"
 ls -la "$WORKDIR/out/arch/arm64/boot/dts/qcom/"
 log "🔍 Contents of $ARTIFACT_DIR:"
 ls -la "$ARTIFACT_DIR"
-
-# --- Set 'artifact_dir' output variable ---
-echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
