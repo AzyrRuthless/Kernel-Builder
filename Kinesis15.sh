@@ -13,6 +13,8 @@ tg() {
   local msg="$1"
   local formatted_date=$(TZ=Asia/Jakarta date '+%Y-%m-%d %H:%M:%S')
   log "➡️ Sending Telegram message: $msg (at $formatted_date WIB)"
+  log "ℹ️ Telegram Bot Token: $TELEGRAM_BOT_TOKEN"
+  log "ℹ️ Telegram Chat ID: $TELEGRAM_CHAT_ID"
   curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
     -d chat_id="$TELEGRAM_CHAT_ID" \
     -d text="$msg - \`$formatted_date\`" \
@@ -24,6 +26,8 @@ tg_doc() {
   local file="$1"
   local caption="$2"
   log "➡️ Sending Telegram document: $file"
+  log "ℹ️ Telegram Bot Token: $TELEGRAM_BOT_TOKEN"
+  log "ℹ️ Telegram Chat ID: $TELEGRAM_CHAT_ID"
   if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
     -F chat_id="$TELEGRAM_CHAT_ID" \
     -F document="@$file" \
@@ -239,9 +243,10 @@ log "📦 ZIP archive: $ZIP_NAME"
 
 tg "✅ Kernel compilation completed\! 🎉 File: \`$ZIP_NAME\`"
 if [ -f "$WORKDIR/$ZIP_NAME" ]; then
+  log "ℹ️ File $ZIP_NAME found at $WORKDIR/$ZIP_NAME"
   tg_doc "$WORKDIR/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
 else
-  handle_error "File $ZIP_NAME not found!"
+  handle_error "File $ZIP_NAME not found at $WORKDIR/$ZIP_NAME!"
 fi
 
 # --- Upload artifacts ---
@@ -253,10 +258,6 @@ cp "$WORKDIR/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
 cp "$WORKDIR/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
 cp "$WORKDIR/$ZIP_NAME" "$ARTIFACT_DIR/"
 
-# --- Debugging output ---
-log "🔍 Contents of $WORKDIR/out/arch/arm64/boot:"
-ls -la "$WORKDIR/out/arch/arm64/boot/"
-log "🔍 Contents of $WORKDIR/out/arch/arm64/boot/dts/qcom:"
-ls -la "$WORKDIR/out/arch/arm64/boot/dts/qcom/"
+# --- Debugging: List contents of artifact directory ---
 log "🔍 Contents of $ARTIFACT_DIR:"
 ls -la "$ARTIFACT_DIR"
