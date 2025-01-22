@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build_kernel:
     docker:
-      - image: cimg/base:2024.01
+      - image: cimg/base:2025.01
     environment:
       PROJECT_NAME: KSU-Kinesis
       TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
