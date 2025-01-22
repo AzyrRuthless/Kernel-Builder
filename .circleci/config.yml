@@ -54,8 +54,8 @@ jobs:
           destination: cust-atoll-ab.dtb
 
       - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/KSU-kinesis-omega-r6.3-miatoll-22012025.zip
-          destination: kernel.zip
+          path: /home/circleci/project/Kinesis_Kernel/$ZIP_NAME
+          destination: $ZIP_NAME
 
 workflows:
   build-workflow:
