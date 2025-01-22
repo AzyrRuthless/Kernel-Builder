@@ -2,6 +2,7 @@ version: 2.1
 
 jobs:
   build_kernel:
+    working_directory: /home/circleci/project
     docker:
       - image: cimg/base:2025.01
     environment:
@@ -12,8 +13,6 @@ jobs:
       KERNEL_BRANCH: Next
     steps:
       - checkout
-
-      - setup_remote_docker # Mengaktifkan Docker daemon terpisah
 
       - run:
           name: 🧰 Setup QEMU
@@ -54,8 +53,8 @@ jobs:
           destination: cust-atoll-ab.dtb
 
       - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/$ZIP_NAME
-          destination: $ZIP_NAME
+          path: /home/circleci/project/Kinesis_Kernel/*.zip
+          destination: kernel.zip
 
 workflows:
   build-workflow:
