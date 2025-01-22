@@ -1,4 +1,4 @@
-name: Build KSU-Kinesis Kernel
+name: 🚀 Build KSU-Kinesis Kernel
 
 on:
   workflow_dispatch:
@@ -10,21 +10,23 @@ jobs:
       PROJECT_NAME: KSU-Kinesis
 
     steps:
-      - name: Checkout Code
+      - name: ⬇️ Checkout Code
         uses: actions/checkout@v3
 
-      - name: Setup QEMU
+      - name: 🧰 Setup QEMU
         uses: docker/setup-qemu-action@v3
 
-      - name: Setup Docker Buildx
+      - name: 🐳 Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install Dependencies
+      - name: 📦 Install Dependencies
         run: |
+          echo "🧰 Installing required packages..."
           sudo apt update
-          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache
+          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq
+          echo "✅ Dependencies installed successfully!"
 
-      - name: Cache ccache
+      - name: 💾 Cache ccache
         uses: actions/cache@v3
         with:
           path: /tmp/ccache
@@ -32,19 +34,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-
 
-      - name: Build Kernel
+      - name: 🛠️ Build Kernel
         id: build
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
-          KERNEL_BRANCH: 15
-          ARTIFACT_DIR: ${{ github.workspace }}/kernel_artifacts
+          KERNEL_BRANCH: Next
         run: |
-          bash Kinesis15.sh
-          echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+          echo "🚀 Starting the kernel build process..."
+          chmod +x Kinesis15.sh
+          ./Kinesis15.sh
+          echo "🎉 Kernel build completed!"
 
-      - name: Upload Artifacts
+      - name: 📤 Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: kernel-artifacts
