@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   build_kernel:
     docker:
-      - image: cimg/base:2024.01 # Gunakan image base yang ringan
+      - image: cimg/base:2024.01
     environment:
       PROJECT_NAME: KSU-Kinesis
       TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
@@ -13,7 +13,7 @@ jobs:
     steps:
       - checkout
 
-      - setup_remote_docker # Mengaktifkan Docker daemon terpisah
+      - setup_remote_docker
 
       - run:
           name: 🧰 Setup QEMU
@@ -33,11 +33,6 @@ jobs:
             sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq
             echo "✅ Dependencies installed successfully!"
 
-      - restore_cache:
-          keys:
-            - v1-ccache-{{ checksum "**/Makefile" }}
-            - v1-ccache-
-
       - run:
           name: 🛠️ Build Kernel
           command: |
@@ -45,11 +40,6 @@ jobs:
             chmod +x Kinesis15.sh
             ./Kinesis15.sh
             echo "🎉 Kernel build completed!"
-
-      - save_cache:
-          key: v1-ccache-{{ checksum "**/Makefile" }}
-          paths:
-            - /tmp/ccache
 
       - store_artifacts:
           path: $ARTIFACT_DIR
