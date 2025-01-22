@@ -223,8 +223,8 @@ mkdir -p "$WORKDIR/anykernel/dtb"
 log "➡️ Copying cust-atoll-ab.dtb..."
 cp "$WORKDIR/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$WORKDIR/anykernel/dtb"
 
-# --- Create ZIP archive ---
-ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y').zip"
+# --- Create ZIP archive with dynamic name ---
+ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y-%H%M%S').zip"
 log "🗜️ Creating ZIP archive: $ZIP_NAME"
 cd "$WORKDIR/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
 zip -r9 "../$ZIP_NAME" ./* -x '*.git*' README.md ./*placeholder
@@ -244,15 +244,6 @@ else
   handle_error "File $ZIP_NAME not found at $WORKDIR/$ZIP_NAME!"
 fi
 
-# --- Upload artifacts ---
-ARTIFACT_DIR="$CIRCLE_WORKING_DIRECTORY/kernel_artifacts"
-log "⬆️ Uploading artifacts to: $ARTIFACT_DIR"
-mkdir -p "$ARTIFACT_DIR"
-cp "$WORKDIR/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
-cp "$WORKDIR/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
-cp "$WORKDIR/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
-cp "$WORKDIR/$ZIP_NAME" "$ARTIFACT_DIR/"
-
-# --- Debugging: List contents of artifact directory ---
-log "🔍 Contents of $ARTIFACT_DIR:"
-ls -la "$ARTIFACT_DIR"
+# --- Debugging: List contents of working directory ---
+log "🔍 Contents of $WORKDIR:"
+ls -la "$WORKDIR"
