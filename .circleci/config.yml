@@ -2,6 +2,7 @@ version: 2.1
 
 jobs:
   build_kernel:
+    working_directory: /home/circleci/project
     docker:
       - image: cimg/base:2025.01
     environment:
@@ -12,8 +13,6 @@ jobs:
       KERNEL_BRANCH: Next
     steps:
       - checkout
-
-      - setup_remote_docker
 
       - run:
           name: 🧰 Setup QEMU
@@ -42,10 +41,24 @@ jobs:
             echo "🎉 Kernel build completed!"
 
       - store_artifacts:
-          path: $ARTIFACT_DIR
-          destination: kernel-artifacts
+          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/Image.gz
+          destination: Image.gz
+
+      - store_artifacts:
+          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img
+          destination: dtbo.img
+
+      - store_artifacts:
+          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb
+          destination: cust-atoll-ab.dtb
+
+      - store_artifacts:
+          path: /home/circleci/project/Kinesis_Kernel/KSU-kinesis-omega-r6.3-miatoll-22012025.zip
+          destination: kernel.zip
 
 workflows:
   build-workflow:
+    triggers:
+      - manual # Hanya bisa dijalankan secara manual
     jobs:
       - build_kernel
