@@ -1,4 +1,4 @@
-name: Build KSU-Kinesis Kernel (Cosmic Clang)
+name: Playground
 
 on:
   workflow_dispatch:
@@ -34,9 +34,16 @@ jobs:
             ${{ runner.os }}-ccache-
 
       - name: Build Kernel
+        id: build
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }} # Your Telegram chat ID
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }} # Your Telegram bot token
           KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250 # Kernel source code URL
-          KERNEL_BRANCH: 15 # Kernel branch to build
-        run: bash KinesisC.sh # Execute the build script
+          KERNEL_BRANCH: Zenith # Kernel branch to build
+        run: bash playground.sh # Execute the build script
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts # Name of the artifact
+          path: ${{ steps.build.outputs.artifact_dir }} # Path to the artifact directory (defined in the build step)

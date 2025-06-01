@@ -1,0 +1,54 @@
+name: 🚀 VelionV2-KSU
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: KSU-Velion
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🧰 Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🐳 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 📦 Install Dependencies
+        run: |
+          echo "🧰 Installing required packages..."
+          sudo apt update
+          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq
+          echo "✅ Dependencies installed successfully!"
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: 🛠️ Build Kernel
+        id: build
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KERNEL_SOURCE: https://github.com/AzyrRuthless/velion_kernel_xiaomi_sm6250
+          KERNEL_BRANCH: V2
+        run: |
+          echo "🚀 Starting the kernel build process..."
+          chmod +x v2.sh
+          ./v2.sh
+          echo "🎉 Kernel build completed!"
+
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts
+          path: ${{ steps.build.outputs.artifact_dir }}
