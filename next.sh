@@ -58,7 +58,48 @@ if ! git clone "$KERNEL_SOURCE" -b "$KERNEL_BRANCH" "$GITHUB_WORKSPACE/Kinesis_K
 fi
 cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to enter kernel directory"
 
-curl -LSs "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh" | bash -s main
+# --- Integrate KernelSU-Next ---
+log "🧩 Integrating KernelSU-Next..."
+KERNELSU_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/kernel/KernelSU-Next"
+if [ ! -d "$KERNELSU_DIR" ]; then
+  git clone -b next2 https://github.com/AzyrRuthless/KernelSU-Next.git "$KERNELSU_DIR"
+  log "✅ KernelSU-Next repository cloned."
+fi
+cd "$KERNELSU_DIR"
+git stash && log "➖ Stashed current changes."
+git checkout next2 && log "➖ Switched to 'next2' branch."
+git pull && log "🔄 KernelSU-Next repository updated."
+cd "$GITHUB_WORKSPACE/Kinesis_Kernel"
+
+# --- Determine driver directory ---
+if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers" ]; then
+  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers"
+elif [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/drivers" ]; then
+  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/drivers"
+else
+  handle_error '"drivers/" directory not found'
+fi
+
+# --- Create a symlink for KernelSU ---
+log "🔗 Creating symlink for KernelSU..."
+ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$KERNELSU_DIR/kernel")" "$DRIVER_DIR/kernelsu"
+log "✅ Symlink created."
+
+# --- Modify Makefile and Kconfig ---
+DRIVER_MAKEFILE="$DRIVER_DIR/Makefile"
+DRIVER_KCONFIG="$DRIVER_DIR/Kconfig"
+
+log "📝 Modifying Makefile..."
+if ! grep -q "kernelsu" "$DRIVER_MAKEFILE"; then
+  printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "$DRIVER_MAKEFILE"
+  log "✅ Makefile modified."
+fi
+
+log "📝 Modifying Kconfig..."
+if ! grep -q "source \"drivers/kernelsu/Kconfig\"" "$DRIVER_KCONFIG"; then
+  sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" "$DRIVER_KCONFIG"
+  log "✅ Kconfig modified."
+fi
 
 # --- Setup ccache ---
 log "🧰 Setting up ccache..."
