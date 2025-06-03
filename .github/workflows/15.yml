@@ -34,6 +34,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-ccache-
 
+      - name: ⚙️ Determine Zyc-Clang Release URL
+        id: zyc_clang_url
+        run: |
+          LATEST_RELEASE_URL=$(curl -s "https://api.github.com/repos/ZyCromerZ/Clang/releases/latest" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
+          echo "ZycClangURL=$LATEST_RELEASE_URL" >> $GITHUB_OUTPUT
+          echo "Determined Zyc-Clang URL: $LATEST_RELEASE_URL"
+
+      - name: 💾 Cache Zyc-Clang
+        uses: actions/cache@v3
+        with:
+          path: ${{ runner.homedir }}/Zyc-Clang
+          key: ${{ runner.os }}-zyc-clang-${{ steps.zyc_clang_url.outputs.ZycClangURL }} # Use the URL itself as part of the key
+          restore-keys: |
+            ${{ runner.os }}-zyc-clang-
+
       - name: 🛠️ Build Kernel
         id: build
         env:
