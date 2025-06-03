@@ -160,11 +160,11 @@ log "INFO" "🔥 Starting kernel compilation..."
 make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- 2>&1 | tee -a "$LOG_FILE"
 
 # --- Check for compilation errors ---
-# $? holds the exit status of the last command
 if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
   handle_error "$LINENO" "Compilation failed"
   tg_doc "$LOG_FILE" "❌ Build failed after $((SECONDS / 60)) minutes $((SECONDS % 60)) seconds"
   exit 1
+fi
 fi
 
 # --- Get Clang and LLD versions ---
