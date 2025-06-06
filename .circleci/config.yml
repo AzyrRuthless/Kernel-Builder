@@ -1,64 +1,65 @@
+# CircleCI configuration file
+# Save this as .circleci/config.yml in your repository root
+
 version: 2.1
 
-jobs:
-  build_kernel:
-    working_directory: /home/circleci/project
+# Define the executor environment
+executors:
+  linux_builder:
     docker:
-      - image: cimg/base:2025.01
+      - image: cimg/base:current # A modern Ubuntu-based image similar to ubuntu-latest
+    working_directory: ~/project
+
+jobs:
+  build-kernel:
+    executor: linux_builder
     environment:
+      # Static environment variables from your GitHub workflow
       PROJECT_NAME: KSU-Kinesis
-      TELEGRAM_CHAT_ID: $TELEGRAM_CHAT_ID
-      TELEGRAM_BOT_TOKEN: $TELEGRAM_BOT_TOKEN
       KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
-      KERNEL_BRANCH: Next
+      KERNEL_BRANCH: xx
+      # Compatibility variable to make xx.sh work without changes
+      GITHUB_WORKSPACE: ~/project
+
     steps:
       - checkout
 
-      - setup_remote_docker
+      - restore_cache:
+          keys:
+            # Cache key for ccache, based on the contents of the Makefiles
+            - v1-ccache-{{ checksum "**/Makefile" }}-{{ checksum "**/Kconfig" }}
+            # Fallback to the most recent cache
+            - v1-ccache-
 
       - run:
-          name: 🧰 Setup QEMU
+          name: "Install Dependencies"
           command: |
-            docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+            echo "Installing required packages..."
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              git bison flex libxml2-dev libssl-dev bc zip default-jre \
+              python3 python3-pip wget curl cpio bash ccache jq
+            echo "Dependencies installed successfully!"
 
       - run:
-          name: 🐳 Setup Docker Buildx
+          name: "Build Kernel"
           command: |
-            docker buildx create --use
+            echo "Starting the kernel build process..."
+            chmod +x ./xx.sh
+            ./xx.sh
+            echo "Kernel build completed!"
 
-      - run:
-          name: 📦 Install Dependencies
-          command: |
-            echo "🧰 Installing required packages..."
-            sudo apt update
-            sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq
-            echo "✅ Dependencies installed successfully!"
-
-      - run:
-          name: 🛠️ Build Kernel
-          command: |
-            echo "🚀 Starting the kernel build process..."
-            chmod +x Kinesis15.sh
-            ./Kinesis15.sh
-            echo "🎉 Kernel build completed!"
+      - save_cache:
+          key: v1-ccache-{{ checksum "**/Makefile" }}-{{ checksum "**/Kconfig" }}
+          paths:
+            - /tmp/ccache
 
       - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/Image.gz
-          destination: Image.gz
-
-      - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img
-          destination: dtbo.img
-
-      - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb
-          destination: cust-atoll-ab.dtb
-
-      - store_artifacts:
-          path: /home/circleci/project/Kinesis_Kernel/*.zip
-          destination: kernel.zip
+          path: kernel_artifacts
+          destination: kernel-artifacts
 
 workflows:
-  build-workflow:
+  version: 2
+  build_and_deploy:
     jobs:
-      - build_kernel
+      - build-kernel
