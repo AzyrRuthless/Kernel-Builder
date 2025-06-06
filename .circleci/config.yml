@@ -46,6 +46,7 @@ jobs:
             echo "Running xx.sh..."
             # The xx.sh script now uses BASE_DIR=$(pwd) and outputs artifacts to ./kernel_artifacts
             ./xx.sh
+          no_output_timeout: 30m
 
       # Save ccache for future builds
       - save_cache:

@@ -189,13 +189,27 @@ fi
 
 # --- Start kernel compilation ---
 log "🔥 Starting kernel compilation..."
-make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- 2>&1 | tee build.log
+# Start compilation in the background
+make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- 2>&1 | tee build.log &
+MAKE_PID=$!
 
-# --- Check for compilation errors ---
-if [[ $? -ne 0 ]]; then
-  handle_error "Compilation failed"
-  tg_doc "build.log" "❌ Build failed after $((SECONDS / 60)) minutes $((SECONDS % 60)) seconds"
-  exit 1
+# Keep-alive loop
+log "⏳ Monitoring compilation... (PID: $MAKE_PID)"
+while kill -0 $MAKE_PID 2>/dev/null; do
+    echo -n "."
+    sleep 60
+done
+echo # Newline after dots
+
+# Wait for make to finish and get its exit code
+wait $MAKE_PID
+MAKE_EXIT_CODE=$?
+
+# Check for compilation errors using the captured exit code
+if [[ $MAKE_EXIT_CODE -ne 0 ]]; then
+  handle_error "Compilation failed with exit code $MAKE_EXIT_CODE"
+  # tg_doc "build.log" "❌ Build failed after $((SECONDS / 60)) minutes $((SECONDS % 60)) seconds" # This line is handled by handle_error
+  exit 1 # Ensure script exits if handle_error doesn't explicitly exit in all cases
 fi
 
 # --- Get Clang and LLD versions ---
