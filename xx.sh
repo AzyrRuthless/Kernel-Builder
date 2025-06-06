@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+BASE_DIR=$(pwd)
 
 # --- Function to log messages with timestamp ---
 log() {
@@ -47,21 +48,21 @@ log "🚀 Starting build at $(date)"
 tg "🚀 Build started\!"
 
 # --- Clean up previous kernel directory ---
-if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel" ]; then
+if [ -d "$BASE_DIR/Kinesis_Kernel" ]; then
   log "🗑️ Cleaning up previous kernel directory..."
-  rm -rf "$GITHUB_WORKSPACE/Kinesis_Kernel"
+  rm -rf "$BASE_DIR/Kinesis_Kernel"
 fi
 
 # --- Clone the kernel source ---
 log "⬇️ Cloning kernel source from: $KERNEL_SOURCE (branch: $KERNEL_BRANCH)..."
-if ! git clone "$KERNEL_SOURCE" -b "$KERNEL_BRANCH" "$GITHUB_WORKSPACE/Kinesis_Kernel" --depth=1; then
+if ! git clone "$KERNEL_SOURCE" -b "$KERNEL_BRANCH" "$BASE_DIR/Kinesis_Kernel" --depth=1; then
   handle_error "Failed to clone kernel source"
 fi
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to enter kernel directory"
+cd "$BASE_DIR/Kinesis_Kernel" || handle_error "Failed to enter kernel directory"
 
 # --- Integrate KernelSU-Next ---
 log "🧩 Integrating KernelSU-Next..."
-KERNELSU_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/kernel/KernelSU-Next"
+KERNELSU_DIR="$BASE_DIR/Kinesis_Kernel/kernel/KernelSU-Next"
 if [ ! -d "$KERNELSU_DIR" ]; then
   git clone -b next https://github.com/AzyrRuthless/KernelSU-Next.git "$KERNELSU_DIR"
   log "✅ KernelSU-Next repository cloned."
@@ -70,13 +71,13 @@ cd "$KERNELSU_DIR"
 git stash && log "➖ Stashed current changes."
 git checkout next && log "➖ Switched to 'next' branch."
 git pull && log "🔄 KernelSU-Next repository updated."
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel"
+cd "$BASE_DIR/Kinesis_Kernel"
 
 # --- Determine driver directory ---
-if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers" ]; then
-  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers"
-elif [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/drivers" ]; then
-  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/drivers"
+if [ -d "$BASE_DIR/Kinesis_Kernel/common/drivers" ]; then
+  DRIVER_DIR="$BASE_DIR/Kinesis_Kernel/common/drivers"
+elif [ -d "$BASE_DIR/Kinesis_Kernel/drivers" ]; then
+  DRIVER_DIR="$BASE_DIR/Kinesis_Kernel/drivers"
 else
   handle_error '"drivers/" directory not found'
 fi
@@ -205,26 +206,26 @@ log "ℹ️ Using LLD: $LLD_VERSION"
 
 # --- Clone AnyKernel3 ---
 log "⬇️ Cloning AnyKernel3..."
-if ! git clone -q -b Ivory https://github.com/AzyrRuthless/AnyKernel3 "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"; then
+if ! git clone -q -b Ivory https://github.com/AzyrRuthless/AnyKernel3 "$BASE_DIR/Kinesis_Kernel/anykernel"; then
   handle_error "Failed to clone AnyKernel3"
 fi
 
 # --- Copy files to AnyKernel3 ---
 log "➡️ Copying Image.gz..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$BASE_DIR/Kinesis_Kernel/anykernel"
 log "➡️ Copying dtbo.img..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$BASE_DIR/Kinesis_Kernel/anykernel"
 log "📁 Creating dtb directory in AnyKernel3..."
-mkdir -p "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
+mkdir -p "$BASE_DIR/Kinesis_Kernel/anykernel/dtb"
 log "➡️ Copying cust-atoll-ab.dtb..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$BASE_DIR/Kinesis_Kernel/anykernel/dtb"
 
 # --- Create ZIP archive ---
 ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y').zip"
 log "🗜️ Creating ZIP archive: $ZIP_NAME"
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
+cd "$BASE_DIR/Kinesis_Kernel/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
 zip -r9 "../$ZIP_NAME" ./* -x '*.git*' README.md ./*placeholder
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to return to kernel directory"
+cd "$BASE_DIR/Kinesis_Kernel" || handle_error "Failed to return to kernel directory"
 
 # --- Build completion notification ---
 BUILD_DURATION_MINUTES=$((SECONDS / 60))
@@ -233,24 +234,21 @@ log "🎉 Build completed in ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_
 log "📦 ZIP archive: $ZIP_NAME"
 
 tg "✅ Kernel compilation completed\! 🎉 File: \`$ZIP_NAME\`"
-tg_doc "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
+tg_doc "$BASE_DIR/Kinesis_Kernel/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
 
 # --- Upload artifacts ---
-ARTIFACT_DIR="$GITHUB_WORKSPACE/kernel_artifacts"
+ARTIFACT_DIR="$BASE_DIR/kernel_artifacts"
 log "⬆️ Uploading artifacts to: $ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "$ARTIFACT_DIR/"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
+cp "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
+cp "$BASE_DIR/Kinesis_Kernel/$ZIP_NAME" "$ARTIFACT_DIR/"
 
 # --- Debugging output ---
-log "🔍 Contents of $GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot:"
-ls -la "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/"
-log "🔍 Contents of $GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom:"
-ls -la "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/"
+log "🔍 Contents of $BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot:"
+ls -la "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/"
+log "🔍 Contents of $BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom:"
+ls -la "$BASE_DIR/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/"
 log "🔍 Contents of $ARTIFACT_DIR:"
 ls -la "$ARTIFACT_DIR"
-
-# --- Set 'artifact_dir' output variable ---
-echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
