@@ -15,20 +15,20 @@ tg() {
   log "➡️ Sending Telegram message: $msg (at $formatted_date WIB)"
   curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
     -d chat_id="$TELEGRAM_CHAT_ID" \
-    -d text="$msg - \`$formatted_date\`" \
-    -d parse_mode="MarkdownV2" > /dev/null
+    -d text="$msg - \`$formatted_date\`" > /dev/null
 }
 
 # --- Function to send Telegram documents with error handling ---
 tg_doc() {
   local file="$1"
   local caption="$2"
+  local formatted_caption=$(printf '%q' "$caption")
   log "➡️ Sending Telegram document: $file"
   if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
     -F chat_id="$TELEGRAM_CHAT_ID" \
     -F document="@$file" \
-    -F caption="$caption" \
-    -F parse_mode="MarkdownV2"; then
+    -F parse_mode="MarkdownV2" \
+    -F caption="${formatted_caption}"; then
     log "❌ Failed to send Telegram document: $file"
     tg "❌ Failed to send Telegram document: $file"
   fi
@@ -46,26 +46,22 @@ handle_error() {
 log "🚀 Starting build at $(date)"
 tg "🚀 Build started\!"
 
-# --- Set working directory ---
-WORKDIR="$CIRCLE_WORKING_DIRECTORY/Kinesis_Kernel"
-log "📂 Working directory: $WORKDIR"
-
 # --- Clean up previous kernel directory ---
-if [ -d "$WORKDIR" ]; then
+if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel" ]; then
   log "🗑️ Cleaning up previous kernel directory..."
-  rm -rf "$WORKDIR"
+  rm -rf "$GITHUB_WORKSPACE/Kinesis_Kernel"
 fi
 
 # --- Clone the kernel source ---
 log "⬇️ Cloning kernel source from: $KERNEL_SOURCE (branch: $KERNEL_BRANCH)..."
-if ! git clone "$KERNEL_SOURCE" -b "$KERNEL_BRANCH" "$WORKDIR" --depth=1; then
+if ! git clone "$KERNEL_SOURCE" -b "$KERNEL_BRANCH" "$GITHUB_WORKSPACE/Kinesis_Kernel" --depth=1; then
   handle_error "Failed to clone kernel source"
 fi
-cd "$WORKDIR" || handle_error "Failed to enter kernel directory"
+cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to enter kernel directory"
 
 # --- Integrate KernelSU-Next ---
 log "🧩 Integrating KernelSU-Next..."
-KERNELSU_DIR="$WORKDIR/kernel/KernelSU-Next"
+KERNELSU_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/kernel/KernelSU-Next"
 if [ ! -d "$KERNELSU_DIR" ]; then
   git clone -b next https://github.com/AzyrRuthless/KernelSU-Next.git "$KERNELSU_DIR"
   log "✅ KernelSU-Next repository cloned."
@@ -74,13 +70,13 @@ cd "$KERNELSU_DIR"
 git stash && log "➖ Stashed current changes."
 git checkout next && log "➖ Switched to 'next' branch."
 git pull && log "🔄 KernelSU-Next repository updated."
-cd "$WORKDIR"
+cd "$GITHUB_WORKSPACE/Kinesis_Kernel"
 
 # --- Determine driver directory ---
-if [ -d "$WORKDIR/common/drivers" ]; then
-  DRIVER_DIR="$WORKDIR/common/drivers"
-elif [ -d "$WORKDIR/drivers" ]; then
-  DRIVER_DIR="$WORKDIR/drivers"
+if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers" ]; then
+  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers"
+elif [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/drivers" ]; then
+  DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/drivers"
 else
   handle_error '"drivers/" directory not found'
 fi
@@ -136,8 +132,8 @@ fi
 log "🔧 Setting environment variables..."
 export PATH="$HOME/Zyc-Clang/bin:$PATH"
 export ARCH=arm64
-export KBUILD_BUILD_USER=AzyrRuthless
-export KBUILD_BUILD_HOST=$(hostname)
+export KBUILD_BUILD_USER=Audemars
+export KBUILD_BUILD_HOST=ROG-G834JYR
 export TZ=Asia/Jakarta
 export KBUILD_BUILD_TIMESTAMP=$(date '+%a %b %d %H:%M:%S %Z %Y')
 
@@ -209,26 +205,26 @@ log "ℹ️ Using LLD: $LLD_VERSION"
 
 # --- Clone AnyKernel3 ---
 log "⬇️ Cloning AnyKernel3..."
-if ! git clone -q https://github.com/AzyrRuthless/AnyKernel3 "$WORKDIR/anykernel"; then
+if ! git clone -q -b Ivory https://github.com/AzyrRuthless/AnyKernel3 "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"; then
   handle_error "Failed to clone AnyKernel3"
 fi
 
 # --- Copy files to AnyKernel3 ---
 log "➡️ Copying Image.gz..."
-cp "$WORKDIR/out/arch/arm64/boot/Image.gz" "$WORKDIR/anykernel"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
 log "➡️ Copying dtbo.img..."
-cp "$WORKDIR/out/arch/arm64/boot/dtbo.img" "$WORKDIR/anykernel"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
 log "📁 Creating dtb directory in AnyKernel3..."
-mkdir -p "$WORKDIR/anykernel/dtb"
+mkdir -p "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
 log "➡️ Copying cust-atoll-ab.dtb..."
-cp "$WORKDIR/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$WORKDIR/anykernel/dtb"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
 
-# --- Create ZIP archive with dynamic name ---
-ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y-%H%M%S').zip"
+# --- Create ZIP archive ---
+ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y').zip"
 log "🗜️ Creating ZIP archive: $ZIP_NAME"
-cd "$WORKDIR/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
+cd "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
 zip -r9 "../$ZIP_NAME" ./* -x '*.git*' README.md ./*placeholder
-cd "$WORKDIR" || handle_error "Failed to return to kernel directory"
+cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to return to kernel directory"
 
 # --- Build completion notification ---
 BUILD_DURATION_MINUTES=$((SECONDS / 60))
@@ -237,13 +233,24 @@ log "🎉 Build completed in ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_
 log "📦 ZIP archive: $ZIP_NAME"
 
 tg "✅ Kernel compilation completed\! 🎉 File: \`$ZIP_NAME\`"
-if [ -f "$WORKDIR/$ZIP_NAME" ]; then
-  log "ℹ️ File $ZIP_NAME found at $WORKDIR/$ZIP_NAME"
-  tg_doc "$WORKDIR/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
-else
-  handle_error "File $ZIP_NAME not found at $WORKDIR/$ZIP_NAME!"
-fi
+tg_doc "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
 
-# --- Debugging: List contents of working directory ---
-log "🔍 Contents of $WORKDIR:"
-ls -la "$WORKDIR"
+# --- Upload artifacts ---
+ARTIFACT_DIR="$GITHUB_WORKSPACE/kernel_artifacts"
+log "⬆️ Uploading artifacts to: $ARTIFACT_DIR"
+mkdir -p "$ARTIFACT_DIR"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "$ARTIFACT_DIR/"
+
+# --- Debugging output ---
+log "🔍 Contents of $GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot:"
+ls -la "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/"
+log "🔍 Contents of $GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom:"
+ls -la "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/"
+log "🔍 Contents of $ARTIFACT_DIR:"
+ls -la "$ARTIFACT_DIR"
+
+# --- Set 'artifact_dir' output variable ---
+echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
