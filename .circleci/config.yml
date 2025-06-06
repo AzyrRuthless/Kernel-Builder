@@ -1,65 +1,67 @@
-# CircleCI configuration file
-# Save this as .circleci/config.yml in your repository root
-
 version: 2.1
 
-# Define the executor environment
-executors:
-  linux_builder:
-    docker:
-      - image: cimg/base:current # A modern Ubuntu-based image similar to ubuntu-latest
-    working_directory: ~/project
+orbs:
+  android: circleci/android@2.4.0 # Using an orb for potential Android SDK/NDK needs later
 
 jobs:
-  build-kernel:
-    executor: linux_builder
+  build_kernel:
+    docker:
+      - image: cimg/base:current # A basic Ubuntu-based image. Consider a more specific one if needed.
+    resource_class: large # Requesting a larger resource class for compilation
     environment:
-      # Static environment variables from your GitHub workflow
-      PROJECT_NAME: KSU-Kinesis
+      # Kernel source and branch
       KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
       KERNEL_BRANCH: xx
-      # Compatibility variable to make xx.sh work without changes
-      GITHUB_WORKSPACE: ~/project
+      # Timezone
+      TZ: Asia/Jakarta
+      # IMPORTANT: TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN must be configured
+      # as environment variables in the CircleCI project settings for notifications to work.
 
     steps:
       - checkout
 
+      # Restore ccache from previous builds
       - restore_cache:
           keys:
-            # Cache key for ccache, based on the contents of the Makefiles
-            - v1-ccache-{{ checksum "**/Makefile" }}-{{ checksum "**/Kconfig" }}
-            # Fallback to the most recent cache
-            - v1-ccache-
+            - ccache-v1-{{ checksum "xx.sh" }}
+            # Fallback to the most recent cache if checksum fails (e.g., new branch)
+            - ccache-v1-
 
       - run:
-          name: "Install Dependencies"
+          name: Install Dependencies
           command: |
             echo "Installing required packages..."
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends \
-              git bison flex libxml2-dev libssl-dev bc zip default-jre \
-              python3 python3-pip wget curl cpio bash ccache jq
+            # Set frontend to noninteractive to avoid prompts
+            export DEBIAN_FRONTEND=noninteractive
+            sudo apt-get update -y
+            # Using --fix-missing in case some packages are temporarily unavailable
+            sudo apt-get install -y --no-install-recommends --fix-missing               git bison flex libxml2-dev libssl-dev bc zip default-jre python3 python3-pip               wget curl cpio bash ccache jq make
             echo "Dependencies installed successfully!"
 
       - run:
-          name: "Build Kernel"
+          name: Execute Kernel Build Script
           command: |
-            echo "Starting the kernel build process..."
+            echo "Making xx.sh executable..."
             chmod +x ./xx.sh
+            echo "Running xx.sh..."
+            # The xx.sh script now uses BASE_DIR=$(pwd) and outputs artifacts to ./kernel_artifacts
             ./xx.sh
-            echo "Kernel build completed!"
 
+      # Save ccache for future builds
       - save_cache:
-          key: v1-ccache-{{ checksum "**/Makefile" }}-{{ checksum "**/Kconfig" }}
+          key: ccache-v1-{{ checksum "xx.sh" }}
           paths:
-            - /tmp/ccache
+            - /tmp/ccache # This is the CCACHE_DIR defined in xx.sh
 
+      # Store kernel artifacts
       - store_artifacts:
-          path: kernel_artifacts
-          destination: kernel-artifacts
+          # Path is relative to the working_directory (where checkout happens)
+          # and should match ARTIFACT_DIR in xx.sh (which is $BASE_DIR/kernel_artifacts)
+          path: ./kernel_artifacts
+          destination: kernel-artifacts # This is the name of the artifact tab in CircleCI
 
 workflows:
   version: 2
-  build_and_deploy:
+  build_and_deploy: # You might want to rename this workflow if it's not deploying
     jobs:
-      - build-kernel
+      - build_kernel
