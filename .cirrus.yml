@@ -1,15 +1,19 @@
 task:
   name: Build Kernel
+  cpu: 8 # Strategy 4: Explicitly request 8 CPUs
   container:
     image: ubuntu:latest
   env:
-    PROJECT_NAME: KSU-Kinesis
-    KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
-    KERNEL_BRANCH: xx
+    PROJECT_NAME: KSU-Kinesis # This is from the original file
+    KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250 # This is from the original file
+    KERNEL_BRANCH: xx # This is from the original file
     # Note: TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN should be set as
     # encrypted environment variables in the Cirrus CI project settings.
-    TELEGRAM_CHAT_ID: ENCRYPTED[...your_chat_id_encryption_string...]
-    TELEGRAM_BOT_TOKEN: ENCRYPTED[...your_bot_token_encryption_string...]
+    TELEGRAM_CHAT_ID: ENCRYPTED[...your_chat_id_encryption_string...] # Placeholder, user needs to set this
+    TELEGRAM_BOT_TOKEN: ENCRYPTED[...your_bot_token_encryption_string...] # Placeholder, user needs to set this
+    # Environment variables for Zyc-Clang and AnyKernel3 cache paths
+    ZYC_CLANG_DIR: /tmp/zyc_clang
+    ANYKERNEL_DIR: /tmp/anykernel3
   setup_script: |
     echo "🧰 Installing required packages..."
     apt-get update
@@ -21,21 +25,21 @@ task:
     ./xx.sh
     echo "🎉 Kernel build completed!"
   artifact_instructions:
-    path: "kernel_artifacts/**" # Assuming xx.sh places artifacts in kernel_artifacts
+    path: "kernel_artifacts/**"
     type: archive
     name: kernel-artifacts
 
 cache:
-  ccache:
+  ccache: # Strategy 3: ccache config primarily here
     folder: /tmp/ccache
-    fingerprint_script: cat xx.sh # Fingerprint based on the build script itself
+    fingerprint_script: md5sum xx.sh | awk '{ print $1 }' # Strategy 5: Refined fingerprint
     populate_script: |
       export CCACHE_DIR=/tmp/ccache
       export CCACHE_EXEC=$(which ccache)
       export USE_CCACHE=1
-      ccache -M 10G
+      ccache -M 10G # Set ccache size
       ccache -o compression=true
-      ccache -z
+      ccache -z     # Clear stats
       echo "✅ ccache configured for population."
     repopulate_script: |
       export CCACHE_DIR=/tmp/ccache
@@ -43,3 +47,30 @@ cache:
       export USE_CCACHE=1
       ccache -s # Show stats after build
       echo "✅ ccache configured for repopulation."
+
+  zyc_clang: # Strategy 1: Cache for Zyc-Clang
+    folder: $ZYC_CLANG_DIR
+    fingerprint_script: echo "zyc-clang-v1" # Change this fingerprint manually to force a re-download
+    populate_script: |
+      echo "📦 Zyc-Clang cache miss or fingerprint changed, downloading..."
+      LATEST_RELEASE_URL=$(curl -s "https://api.github.com/repos/ZyCromerZ/Clang/releases/latest" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
+      if [ -z "$LATEST_RELEASE_URL" ] || [ "$LATEST_RELEASE_URL" == "null" ]; then
+        echo "❌ Failed to retrieve the latest release URL for Zyc-Clang"
+        exit 1
+      fi
+      echo "⬇️ Downloading Zyc-Clang from $LATEST_RELEASE_URL..."
+      mkdir -p $ZYC_CLANG_DIR
+      wget --progress=dot:mega "$LATEST_RELEASE_URL" -O "$ZYC_CLANG_DIR/Zyc-Clang.tar.gz"
+      echo "📦 Extracting Zyc-Clang..."
+      tar -xf "$ZYC_CLANG_DIR/Zyc-Clang.tar.gz" -C $ZYC_CLANG_DIR --strip-components=1 # Assuming tarball has a top-level dir
+      rm "$ZYC_CLANG_DIR/Zyc-Clang.tar.gz"
+      echo "✅ Zyc-Clang downloaded and extracted to $ZYC_CLANG_DIR"
+    # No repopulate_script needed, cache is either there or populated.
+
+  anykernel3: # Strategy 2: Cache for AnyKernel3
+    folder: $ANYKERNEL_DIR
+    fingerprint_script: echo "anykernel3-ivory-v1" # Change this fingerprint manually if AnyKernel3 needs update
+    populate_script: |
+      echo "📦 AnyKernel3 cache miss or fingerprint changed, cloning..."
+      git clone -q -b Ivory https://github.com/AzyrRuthless/AnyKernel3 $ANYKERNEL_DIR
+      echo "✅ AnyKernel3 cloned to $ANYKERNEL_DIR"

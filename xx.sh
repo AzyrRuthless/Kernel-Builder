@@ -13,22 +13,16 @@ tg() {
   local msg="$1"
   local formatted_date=$(TZ=Asia/Jakarta date '+%Y-%m-%d %H:%M:%S')
   log "➡️ Sending Telegram message: $msg (at $formatted_date WIB)"
-  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-    -d chat_id="$TELEGRAM_CHAT_ID" \
-    -d text="$msg - \`$formatted_date\`" > /dev/null
+  curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage"     -d chat_id="$TELEGRAM_CHAT_ID"     -d text="$msg - \`$formatted_date\`" > /dev/null
 }
 
 # --- Function to send Telegram documents with error handling ---
 tg_doc() {
   local file="$1"
   local caption="$2"
-  local formatted_caption=$(printf '%q' "$caption")
-  log "➡️ Sending Telegram document: $file"
-  if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" \
-    -F chat_id="$TELEGRAM_CHAT_ID" \
-    -F document="@$file" \
-    -F parse_mode="MarkdownV2" \
-    -F caption="${formatted_caption}"; then
+  local formatted_caption=$(printf '%q' "$caption") # Properly quote the caption
+  log "➡️ Sending Telegram document: $file with caption: $caption"
+  if ! curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"     -F chat_id="$TELEGRAM_CHAT_ID"     -F document="@$file"     -F parse_mode="MarkdownV2"     -F caption="${formatted_caption}"; then # Use the quoted caption
     log "❌ Failed to send Telegram document: $file"
     tg "❌ Failed to send Telegram document: $file"
   fi
@@ -61,21 +55,24 @@ cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to enter kernel di
 
 # --- Integrate KernelSU-Next ---
 log "🧩 Integrating KernelSU-Next..."
-KERNELSU_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/kernel/KernelSU-Next"
-if [ ! -d "$KERNELSU_DIR" ]; then
-  git clone -b next https://github.com/AzyrRuthless/KernelSU-Next.git "$KERNELSU_DIR"
-  log "✅ KernelSU-Next repository cloned."
+KERNELSU_DIR_NAME="KernelSU-Next" # Define a name for the directory within the kernel tree
+KERNELSU_TARGET_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/kernel/$KERNELSU_DIR_NAME"
+
+# Check if KernelSU-Next needs to be cloned or updated (basic check)
+if [ ! -d "$KERNELSU_TARGET_DIR/.git" ]; then # If not a git repo, clone it
+  log "Cloning KernelSU-Next..."
+  git clone -q -b next https://github.com/AzyrRuthless/KernelSU-Next.git "$KERNELSU_TARGET_DIR"
+else
+  log "Updating KernelSU-Next..."
+  (cd "$KERNELSU_TARGET_DIR" && git stash --quiet && git checkout --quiet next && git pull --quiet)
 fi
-cd "$KERNELSU_DIR"
-git stash && log "➖ Stashed current changes."
-git checkout next && log "➖ Switched to 'next' branch."
-git pull && log "🔄 KernelSU-Next repository updated."
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel"
+log "✅ KernelSU-Next integrated/updated."
+
 
 # --- Determine driver directory ---
 if [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers" ]; then
   DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/common/drivers"
-elif [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/drivers" ]; then
+elif [ -d "$GITHUB_WORKSPACE/Kinesis_Kernel/drivers" ];then
   DRIVER_DIR="$GITHUB_WORKSPACE/Kinesis_Kernel/drivers"
 else
   handle_error '"drivers/" directory not found'
@@ -83,8 +80,9 @@ fi
 
 # --- Create a symlink for KernelSU ---
 log "🔗 Creating symlink for KernelSU..."
-ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$KERNELSU_DIR/kernel")" "$DRIVER_DIR/kernelsu"
+ln -sf "$(realpath --relative-to="$DRIVER_DIR" "$KERNELSU_TARGET_DIR/kernel")" "$DRIVER_DIR/kernelsu"
 log "✅ Symlink created."
+
 
 # --- Modify Makefile and Kconfig ---
 DRIVER_MAKEFILE="$DRIVER_DIR/Makefile"
@@ -92,45 +90,36 @@ DRIVER_KCONFIG="$DRIVER_DIR/Kconfig"
 
 log "📝 Modifying Makefile..."
 if ! grep -q "kernelsu" "$DRIVER_MAKEFILE"; then
-  printf "\nobj-\$(CONFIG_KSU) += kernelsu/\n" >> "$DRIVER_MAKEFILE"
+  printf "
+obj-\$(CONFIG_KSU) += kernelsu/
+" >> "$DRIVER_MAKEFILE"
   log "✅ Makefile modified."
 fi
 
 log "📝 Modifying Kconfig..."
-if ! grep -q "source \"drivers/kernelsu/Kconfig\"" "$DRIVER_KCONFIG"; then
-  sed -i "/endmenu/i\source \"drivers/kernelsu/Kconfig\"" "$DRIVER_KCONFIG"
+if ! grep -q "source "drivers/kernelsu/Kconfig"" "$DRIVER_KCONFIG"; then
+  if grep -q "endmenu" "$DRIVER_KCONFIG"; then
+    sed -i "/endmenu/i\source "drivers/kernelsu/Kconfig"" "$DRIVER_KCONFIG"
+  else
+    sed -i "/endif/i\source "drivers/kernelsu/Kconfig"" "$DRIVER_KCONFIG"
+  fi
   log "✅ Kconfig modified."
 fi
 
-# --- Setup ccache ---
-log "🧰 Setting up ccache..."
-export CCACHE_DIR=/tmp/ccache
-export CCACHE_EXEC=$(which ccache)
-export USE_CCACHE=1
-ccache -M 10G
-ccache -o compression=true
-ccache -z
-log "✅ ccache configured."
+# --- ccache setup is now handled by Cirrus CI cache populate_script ---
+log "✅ ccache is configured by Cirrus CI."
 
-# --- Download and Extract Zyc-Clang ---
-log "⬇️ Downloading and extracting Zyc-Clang..."
-if [ ! -d "$HOME/Zyc-Clang" ]; then
-  LATEST_RELEASE_URL=$(curl -s "https://api.github.com/repos/ZyCromerZ/Clang/releases/latest" | jq -r '.assets[] | select(.name | endswith(".tar.gz")) | .browser_download_url')
-  if [ -z "$LATEST_RELEASE_URL" ]; then
-    handle_error "Failed to retrieve the latest release URL for Zyc-Clang"
-  fi
-  wget "$LATEST_RELEASE_URL" -O "$HOME/Zyc-Clang.tar.gz"
-  mkdir -p "$HOME/Zyc-Clang"
-  tar -xf "$HOME/Zyc-Clang.tar.gz" -C "$HOME/Zyc-Clang"
-  rm "$HOME/Zyc-Clang.tar.gz"
-  log "✅ Zyc-Clang downloaded and extracted to $HOME/Zyc-Clang"
-else
-  log "✅ Zyc-Clang already exists at $HOME/Zyc-Clang"
+# --- Zyc-Clang is now cached by Cirrus CI ---
+log "🧰 Using Zyc-Clang from cached directory: $ZYC_CLANG_DIR"
+if [ ! -d "$ZYC_CLANG_DIR" ] || [ -z "$(ls -A $ZYC_CLANG_DIR)" ]; then
+  handle_error "Zyc-Clang directory ($ZYC_CLANG_DIR) not found or empty. Cache might have failed."
 fi
+export PATH="$ZYC_CLANG_DIR/bin:$PATH"
+log "✅ Zyc-Clang PATH configured."
+
 
 # --- Set environment variables ---
 log "🔧 Setting environment variables..."
-export PATH="$HOME/Zyc-Clang/bin:$PATH"
 export ARCH=arm64
 export KBUILD_BUILD_USER=Audemars
 export KBUILD_BUILD_HOST=ROG-G834JYR
@@ -145,7 +134,8 @@ export STRIP=llvm-strip
 export OBJCOPY=llvm-objcopy
 export OBJDUMP=llvm-objdump
 
-export PROJECT_NAME="KSU"
+# PROJECT_NAME is set in Cirrus CI env, DEVICE_CODENAME is specific to this script context
+# export PROJECT_NAME="KSU" # This is set by Cirrus CI env
 export DEVICE_CODENAME="miatoll"
 
 # --- Set defconfig ---
@@ -153,13 +143,38 @@ DEFCONFIG="vendor/xiaomi/miatoll_defconfig"
 log "⚙️ Using defconfig: $DEFCONFIG"
 
 # --- Get release version from defconfig ---
-DEFCONFIG_CONTENT=$(cat arch/arm64/configs/$DEFCONFIG)
-RELEASE_VERSION=$(echo "$DEFCONFIG_CONTENT" | grep "CONFIG_LOCALVERSION=" | sed 's/CONFIG_LOCALVERSION="\(.*\)"/\1/')
+DEFCONFIG_PATH="$GITHUB_WORKSPACE/Kinesis_Kernel/arch/arm64/configs/$DEFCONFIG"
+if [ ! -f "$DEFCONFIG_PATH" ]; then
+    handle_error "Defconfig file not found at $DEFCONFIG_PATH"
+fi
+DEFCONFIG_CONTENT=$(cat "$DEFCONFIG_PATH")
+RELEASE_VERSION_LINE=$(echo "$DEFCONFIG_CONTENT" | grep "CONFIG_LOCALVERSION=")
+if [ -z "$RELEASE_VERSION_LINE" ]; then
+    handle_error "CONFIG_LOCALVERSION not found in defconfig"
+fi
+RELEASE_VERSION=$(echo "$RELEASE_VERSION_LINE" | sed 's/CONFIG_LOCALVERSION="\(.*\)"/\1/')
 RELEASE_VERSION="${RELEASE_VERSION#-}"
-IFS=- read -r KERNEL_VARIANT KERNEL_CODENAME RELEASE_VERSION <<< "$RELEASE_VERSION" || true
-log "ℹ️ Kernel Variant: $KERNEL_VARIANT"
-log "ℹ️ Kernel Codename: $KERNEL_CODENAME"
-log "ℹ️ Release Version: $RELEASE_VERSION"
+
+KERNEL_VARIANT_FROM_DEFCONFIG=""
+KERNEL_CODENAME_FROM_DEFCONFIG=""
+VERSION_SUFFIX_FROM_DEFCONFIG=""
+
+if [[ "$RELEASE_VERSION" == KSU-* ]]; then
+    KERNEL_VARIANT_FROM_DEFCONFIG="KSU"
+    TEMP_VERSION=${RELEASE_VERSION#KSU-}
+    KERNEL_CODENAME_FROM_DEFCONFIG=$(echo "$TEMP_VERSION" | cut -d'-' -f1)
+    VERSION_SUFFIX_FROM_DEFCONFIG=$(echo "$TEMP_VERSION" | cut -d'-' -f2-)
+else
+    IFS='-' read -ra PARTS <<< "$RELEASE_VERSION"
+    KERNEL_VARIANT_FROM_DEFCONFIG="${PARTS[0]}"
+    KERNEL_CODENAME_FROM_DEFCONFIG="${PARTS[1]}"
+    VERSION_SUFFIX_FROM_DEFCONFIG=$(IFS="-"; echo "${PARTS[*]:2}")
+fi
+
+log "ℹ️ Kernel Variant from defconfig: $KERNEL_VARIANT_FROM_DEFCONFIG"
+log "ℹ️ Kernel Codename from defconfig: $KERNEL_CODENAME_FROM_DEFCONFIG"
+log "ℹ️ Version Suffix from defconfig: $VERSION_SUFFIX_FROM_DEFCONFIG"
+
 
 # --- Create output directory ---
 mkdir -p out
@@ -181,50 +196,63 @@ fi
 if [[ "$1" == "-r" || "$1" == "--regen" ]]; then
   log "🔄 Regenerating defconfig..."
   make O=out ARCH=arm64 $DEFCONFIG savedefconfig
-  cp out/defconfig arch/arm64/configs/$DEFCONFIG
+  cp out/defconfig "$DEFCONFIG_PATH"
   log "✅ Defconfig regenerated."
   exit 0
 fi
 
 # --- Start kernel compilation ---
 log "🔥 Starting kernel compilation..."
+export USE_CCACHE=1
 make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- 2>&1 | tee build.log
 
-# --- Check for compilation errors ---
-if [[ $? -ne 0 ]]; then
-  handle_error "Compilation failed"
-  tg_doc "build.log" "❌ Build failed after $((SECONDS / 60)) minutes $((SECONDS % 60)) seconds"
-  exit 1
+if [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+  tg_doc "build.log" "❌ Build failed after $((SECONDS / 60)) minutes $((SECONDS % 60)) seconds. Error during make."
+  handle_error "Compilation failed (make process exited with non-zero)"
 fi
 
 # --- Get Clang and LLD versions ---
-CLANG_VERSION=$($HOME/Zyc-Clang/bin/clang --version 2>&1 | head -n 1)
-LLD_VERSION=$($HOME/Zyc-Clang/bin/ld.lld --version 2>&1 | head -n 1)
+CLANG_VERSION=$($ZYC_CLANG_DIR/bin/clang --version 2>&1 | head -n 1)
+LLD_VERSION=$($ZYC_CLANG_DIR/bin/ld.lld --version 2>&1 | head -n 1)
 log "ℹ️ Using Clang: $CLANG_VERSION"
 log "ℹ️ Using LLD: $LLD_VERSION"
 
-# --- Clone AnyKernel3 ---
-log "⬇️ Cloning AnyKernel3..."
-if ! git clone -q -b Ivory https://github.com/AzyrRuthless/AnyKernel3 "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"; then
-  handle_error "Failed to clone AnyKernel3"
+# --- AnyKernel3 is now cached by Cirrus CI ---
+ANYKERNEL_LOCAL_PATH="$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
+log "📦 Using AnyKernel3 from cached directory: $ANYKERNEL_DIR"
+if [ ! -d "$ANYKERNEL_DIR" ] || [ -z "$(ls -A $ANYKERNEL_DIR)" ]; then
+  handle_error "AnyKernel3 directory ($ANYKERNEL_DIR) not found or empty. Cache might have failed."
 fi
+cp -r "$ANYKERNEL_DIR/." "$ANYKERNEL_LOCAL_PATH/" # Ensure dotfiles are copied if any, and content goes into dir
+log "✅ AnyKernel3 copied to $ANYKERNEL_LOCAL_PATH"
+
 
 # --- Copy files to AnyKernel3 ---
 log "➡️ Copying Image.gz..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$ANYKERNEL_LOCAL_PATH/"
 log "➡️ Copying dtbo.img..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel"
+cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$ANYKERNEL_LOCAL_PATH/"
 log "📁 Creating dtb directory in AnyKernel3..."
-mkdir -p "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
+mkdir -p "$ANYKERNEL_LOCAL_PATH/dtb"
 log "➡️ Copying cust-atoll-ab.dtb..."
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel/dtb"
+SOURCE_DTB_PATH="$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb"
+if [ ! -f "$SOURCE_DTB_PATH" ]; then
+    handle_error "cust-atoll-ab.dtb not found at $SOURCE_DTB_PATH"
+fi
+cp "$SOURCE_DTB_PATH" "$ANYKERNEL_LOCAL_PATH/dtb/"
+
 
 # --- Create ZIP archive ---
-ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${DEVICE_CODENAME}-$(date '+%d%m%Y').zip"
+# Use PROJECT_NAME from Cirrus env
+FINAL_PROJECT_NAME=${PROJECT_NAME} # Relies on PROJECT_NAME from Cirrus CI env
+ZIP_NAME="${FINAL_PROJECT_NAME}-${KERNEL_VARIANT_FROM_DEFCONFIG}-${KERNEL_CODENAME_FROM_DEFCONFIG}-${DEVICE_CODENAME}-${VERSION_SUFFIX_FROM_DEFCONFIG}-$(date '+%d%m%Y').zip"
+ZIP_NAME=$(echo "$ZIP_NAME" | sed 's/--/-/g' | sed 's/^-//' | sed 's/-$//')
+
 log "🗜️ Creating ZIP archive: $ZIP_NAME"
-cd "$GITHUB_WORKSPACE/Kinesis_Kernel/anykernel" || handle_error "Failed to enter AnyKernel3 directory"
-zip -r9 "../$ZIP_NAME" ./* -x '*.git*' README.md ./*placeholder
+cd "$ANYKERNEL_LOCAL_PATH" || handle_error "Failed to enter AnyKernel3 directory ($ANYKERNEL_LOCAL_PATH)"
+zip -r9 "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" ./* -x '*.git*' README.md ./*placeholder '.github/*'
 cd "$GITHUB_WORKSPACE/Kinesis_Kernel" || handle_error "Failed to return to kernel directory"
+
 
 # --- Build completion notification ---
 BUILD_DURATION_MINUTES=$((SECONDS / 60))
@@ -232,8 +260,10 @@ BUILD_DURATION_SECONDS=$((SECONDS % 60))
 log "🎉 Build completed in ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds!"
 log "📦 ZIP archive: $ZIP_NAME"
 
+TG_CAPTION="✅ Build finished after ${BUILD_DURATION_MINUTES}m ${BUILD_DURATION_SECONDS}s"
 tg "✅ Kernel compilation completed\! 🎉 File: \`$ZIP_NAME\`"
-tg_doc "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "✅ Build finished after ${BUILD_DURATION_MINUTES} minutes ${BUILD_DURATION_SECONDS} seconds"
+tg_doc "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "$TG_CAPTION"
+
 
 # --- Upload artifacts ---
 ARTIFACT_DIR="$GITHUB_WORKSPACE/kernel_artifacts"
@@ -241,7 +271,9 @@ log "⬆️ Uploading artifacts to: $ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/Image.gz" "$ARTIFACT_DIR/"
 cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dtbo.img" "$ARTIFACT_DIR/"
-cp "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/cust-atoll-ab.dtb" "$ARTIFACT_DIR/"
+if [ -f "$SOURCE_DTB_PATH" ]; then
+    cp "$SOURCE_DTB_PATH" "$ARTIFACT_DIR/"
+fi
 cp "$GITHUB_WORKSPACE/Kinesis_Kernel/$ZIP_NAME" "$ARTIFACT_DIR/"
 
 # --- Debugging output ---
@@ -252,5 +284,4 @@ ls -la "$GITHUB_WORKSPACE/Kinesis_Kernel/out/arch/arm64/boot/dts/qcom/"
 log "🔍 Contents of $ARTIFACT_DIR:"
 ls -la "$ARTIFACT_DIR"
 
-# --- Set 'artifact_dir' output variable ---
-# echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+log "✅ Build process finished successfully."
