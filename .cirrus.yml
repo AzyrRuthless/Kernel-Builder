@@ -1,0 +1,45 @@
+task:
+  name: Build Kernel
+  container:
+    image: ubuntu:latest
+  env:
+    PROJECT_NAME: KSU-Kinesis
+    KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
+    KERNEL_BRANCH: xx
+    # Note: TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN should be set as
+    # encrypted environment variables in the Cirrus CI project settings.
+    TELEGRAM_CHAT_ID: ENCRYPTED[...your_chat_id_encryption_string...]
+    TELEGRAM_BOT_TOKEN: ENCRYPTED[...your_bot_token_encryption_string...]
+  setup_script: |
+    echo "🧰 Installing required packages..."
+    apt-get update
+    apt-get install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq qemu-user-static
+    echo "✅ Dependencies installed successfully!"
+  build_script: |
+    echo "🚀 Starting the kernel build process..."
+    chmod +x xx.sh
+    ./xx.sh
+    echo "🎉 Kernel build completed!"
+  artifact_instructions:
+    path: "kernel_artifacts/**" # Assuming xx.sh places artifacts in kernel_artifacts
+    type: archive
+    name: kernel-artifacts
+
+cache:
+  ccache:
+    folder: /tmp/ccache
+    fingerprint_script: cat xx.sh # Fingerprint based on the build script itself
+    populate_script: |
+      export CCACHE_DIR=/tmp/ccache
+      export CCACHE_EXEC=$(which ccache)
+      export USE_CCACHE=1
+      ccache -M 10G
+      ccache -o compression=true
+      ccache -z
+      echo "✅ ccache configured for population."
+    repopulate_script: |
+      export CCACHE_DIR=/tmp/ccache
+      export CCACHE_EXEC=$(which ccache)
+      export USE_CCACHE=1
+      ccache -s # Show stats after build
+      echo "✅ ccache configured for repopulation."

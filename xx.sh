@@ -253,4 +253,4 @@ log "🔍 Contents of $ARTIFACT_DIR:"
 ls -la "$ARTIFACT_DIR"
 
 # --- Set 'artifact_dir' output variable ---
-echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
+# echo "artifact_dir=$ARTIFACT_DIR" >> $GITHUB_OUTPUT
