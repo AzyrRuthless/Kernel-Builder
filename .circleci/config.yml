@@ -1,0 +1,66 @@
+version: 2.1
+
+orbs:
+  android: circleci/android@2.4.0 # Using an orb for potential Android SDK/NDK needs later
+
+jobs:
+  build_kernel:
+    docker:
+      - image: cimg/base:current # A basic Ubuntu-based image. Consider a more specific one if needed.
+    resource_class: large # Requesting a larger resource class for compilation
+    environment:
+      # Kernel source and branch
+      KERNEL_BRANCH: xxthin
+      # Timezone
+      TZ: Asia/Jakarta
+      # IMPORTANT: TELEGRAM_CHAT_ID and TELEGRAM_BOT_TOKEN must be configured
+      # as environment variables in the CircleCI project settings for notifications to work.
+
+    steps:
+      - checkout
+
+      # Restore ccache from previous builds
+      - restore_cache:
+          keys:
+            - ccache-v1-{{ checksum "xx.sh" }}
+            # Fallback to the most recent cache if checksum fails (e.g., new branch)
+            - ccache-v1-
+
+      - run:
+          name: Install Dependencies
+          command: |
+            echo "Installing required packages..."
+            # Set frontend to noninteractive to avoid prompts
+            export DEBIAN_FRONTEND=noninteractive
+            sudo apt-get update -y
+            # Using --fix-missing in case some packages are temporarily unavailable
+            sudo apt-get install -y --no-install-recommends --fix-missing               git bison flex libxml2-dev libssl-dev bc zip default-jre python3 python3-pip               wget curl cpio bash ccache jq make
+            echo "Dependencies installed successfully!"
+
+      - run:
+          name: Execute Kernel Build Script
+          command: |
+            echo "Making xx.sh executable..."
+            chmod +x ./xx.sh
+            echo "Running xx.sh..."
+            # The xx.sh script now uses BASE_DIR=$(pwd) and outputs artifacts to ./kernel_artifacts
+            ./xx.sh
+
+      # Save ccache for future builds
+      - save_cache:
+          key: ccache-v1-{{ checksum "xx.sh" }}
+          paths:
+            - /tmp/ccache # This is the CCACHE_DIR defined in xx.sh
+
+      # Store kernel artifacts
+      - store_artifacts:
+          # Path is relative to the working_directory (where checkout happens)
+          # and should match ARTIFACT_DIR in xx.sh (which is $BASE_DIR/kernel_artifacts)
+          path: ./kernel_artifacts
+          destination: kernel-artifacts # This is the name of the artifact tab in CircleCI
+
+workflows:
+  version: 2
+  build_and_deploy: # You might want to rename this workflow if it's not deploying
+    jobs:
+      - build_kernel
