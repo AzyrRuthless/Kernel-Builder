@@ -1,0 +1,57 @@
+version: 2.1
+
+orbs:
+  android: circleci/android@2.4.0
+
+jobs:
+  build_kernel:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: large
+    environment:
+      PROJECT_NAME: RKSU
+      KERNEL_BRANCH: NadirRKSU
+      TZ: Asia/Jakarta
+      BUILD_SCRIPT: build.sh
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - ccache-v1-{{ checksum "build.sh" }}
+            - ccache-v1-
+
+      - run:
+          name: 📦 Install Build Dependencies
+          command: |
+            export DEBIAN_FRONTEND=noninteractive
+            sudo apt-get update
+            # Removed aria2, ensured wget is present
+            sudo apt-get install -y --no-install-recommends \
+              git bison flex libxml2-dev libssl-dev bc zip default-jre \
+              python3 python3-pip wget curl cpio bash ccache jq make \
+              libncurses-dev lld build-essential libstdc++6 \
+              gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+              gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+
+      - run:
+          name: 🛠️ Execute Build Script
+          command: |
+            if [[ -f xx.sh ]]; then mv xx.sh $BUILD_SCRIPT; fi
+            chmod +x $BUILD_SCRIPT
+            ./$BUILD_SCRIPT
+
+      - save_cache:
+          key: ccache-v1-{{ checksum "build.sh" }}
+          paths:
+            - /tmp/ccache
+
+      - store_artifacts:
+          path: ./kernel_artifacts
+          destination: kernel-artifacts
+
+workflows:
+  version: 2
+  build_and_deploy:
+    jobs:
+      - build_kernel
