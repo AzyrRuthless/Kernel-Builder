@@ -18,7 +18,7 @@ jobs:
 
       - restore_cache:
           keys:
-            - ccache-v1-{{ checksum "build.sh" }}
+            - ccache-v1-{{ checksum "xx.sh" }}
             - ccache-v1-
 
       - run:
