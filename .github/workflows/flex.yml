@@ -1,0 +1,99 @@
+name: 🚀 KSU-Kinesis-Flex
+
+# Trigger manually from the Actions tab
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_source:
+        description: 'Kernel Source URL'
+        required: true
+        default: 'https://github.com/AzyrRuthless/kernel_xiaomi_sm6250'
+        type: string # Explicitly set type
+      kernel_branch:
+        description: 'Kernel Branch'
+        required: true
+        default: 'xx'
+        type: string # Explicitly set type
+      clean_build:
+        description: 'Perform a clean build (removes existing out/ dir)?'
+        type: boolean
+        required: false
+        default: false
+      regen_defconfig:
+        description: 'Regenerate and save defconfig?'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: KSU-Kinesis
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v4 # Use latest checkout action
+
+      # QEMU/Buildx setup might not be strictly needed unless building multi-arch docker images
+      # - name: 🧰 Setup QEMU
+      #   uses: docker/setup-qemu-action@v3
+      # - name: 🐳 Setup Docker Buildx
+      #   uses: docker/setup-buildx-action@v3
+
+      - name: 📦 Install Dependencies
+        run: |
+          echo "🧰 Installing required packages..."
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq
+          echo "✅ Dependencies installed successfully!"
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v4 # Use latest cache action
+        with:
+          path: /tmp/ccache
+          # Include source URL in cache key for more specificity
+          key: ${{ runner.os }}-ccache-${{ github.event.inputs.kernel_source }}-${{ github.event.inputs.kernel_branch }}-${{ hashFiles('**/Makefile', '**/Kconfig', 'arch/**/configs/*defconfig') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-${{ github.event.inputs.kernel_source }}-${{ github.event.inputs.kernel_branch }}-
+            ${{ runner.os }}-ccache-
+
+      - name: 🛠️ Build Kernel
+        id: build
+        env:
+          # Pass secrets and inputs to the script environment
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KERNEL_SOURCE: ${{ github.event.inputs.kernel_source }}
+          KERNEL_BRANCH: ${{ github.event.inputs.kernel_branch }}
+          # Pass boolean inputs as environment variables (will be 'true' or 'false' strings)
+          CLEAN_BUILD: ${{ github.event.inputs.clean_build }}
+          REGEN_DEFCONFIG: ${{ github.event.inputs.regen_defconfig }}
+          # Make script executable (ensure filename matches your repo)
+          SCRIPT_NAME: flex.sh # Define script name here
+        run: |
+          echo "🚀 Starting the kernel build process..."
+          chmod +x $SCRIPT_NAME
+
+          # Prepare arguments for the build script
+          BUILD_ARGS=""
+          if [[ "$CLEAN_BUILD" == "true" ]]; then
+            BUILD_ARGS="--clean"
+          elif [[ "$REGEN_DEFCONFIG" == "true" ]]; then
+            BUILD_ARGS="--regen"
+          fi
+
+          # Execute the build script with optional arguments
+          ./${SCRIPT_NAME} $BUILD_ARGS
+
+          echo "🎉 Kernel build process finished!"
+
+      - name: 📤 Upload Artifacts
+        # Only upload if build step succeeded and set an output
+        if: success() && steps.build.outputs.artifact_dir != ''
+        uses: actions/upload-artifact@v4 # Use latest upload action
+        with:
+          name: kernel-artifacts-${{ github.run_id }} # Unique artifact name
+          path: ${{ steps.build.outputs.artifact_dir }} # Get path from script output
+          retention-days: 5 # Optionally set artifact retention period
+

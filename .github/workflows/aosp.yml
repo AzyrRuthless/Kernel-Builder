@@ -1,0 +1,50 @@
+name: AOSP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: KSU-Kinesis
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses5-dev
+
+      - name: Cache ccache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Build Kernel
+        id: build
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250
+          KERNEL_BRANCH: 15-NONLTO
+          BUILD_SCRIPT: aosp.sh
+        run: bash ${{ env.BUILD_SCRIPT }}
+
+      - name: Upload Artifacts (Success)
+        if: success() # Only upload if the build step succeeds
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts-success
+          path: ${{ steps.build.outputs.artifact_dir }}
+
+      - name: Upload Build Log (Always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: ${{ env.GITHUB_WORKSPACE }}/kernel_artifacts/build.log

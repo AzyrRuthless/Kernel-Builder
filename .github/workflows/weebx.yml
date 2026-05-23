@@ -1,0 +1,49 @@
+name: WeebX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      # Project Name (for Telegram notifications and zip name)
+      PROJECT_NAME: KSU-Kinesis
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ccache # Path to cache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }} # Cache key based on OS and Makefile
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Build Kernel
+        id: build
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }} # Your Telegram chat ID
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }} # Your Telegram bot token
+          KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_xiaomi_sm6250 # Kernel source code URL
+          KERNEL_BRANCH: Testing # Kernel branch to build
+        run: bash weebx.sh # Execute the build script
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts # Name of the artifact
+          path: ${{ steps.build.outputs.artifact_dir }} # Path to the artifact directory (defined in the build step)

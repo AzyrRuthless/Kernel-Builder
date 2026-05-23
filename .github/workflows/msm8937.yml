@@ -1,0 +1,51 @@
+name: Build KSU-8937 Kernel ✨
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: KSU-8937 🌈
+
+    steps:
+      - name: Checkout Code 🛎️
+        uses: actions/checkout@v3
+
+      - name: Setup QEMU 🌍
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx 🏗️
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Dependencies 🛠️
+        run: |
+          sudo apt update
+          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl cpio bash ccache jq build-essential
+
+      - name: Cache ccache 🗃️
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Clone RvClang ⚡
+        run: |
+          git clone --depth=1 https://gitlab.com/rvproject27/RvClang ${{ github.workspace }}/RvClang
+
+      - name: Build Kernel 🚀
+        id: build
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          bash 8937.sh
+
+      - name: Upload Artifacts 📤
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.artifact_name }} # Use the artifact name from the build step
+          path: ${{ steps.build.outputs.artifact_path }} # Use the artifact path from the build step
