@@ -8,6 +8,11 @@ on:
         required: false
         type: boolean
         default: false
+      driver_only:
+        description: 'Compile QCOM Power Driver Only'
+        required: false
+        type: boolean
+        default: false
       upload_artifact:
         description: 'Upload Artifact to GitHub'
         required: false
@@ -22,6 +27,7 @@ jobs:
       CLANG_VERSION: r596125
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
+      DRIVER_ONLY: ${{ inputs.driver_only }}
 
     steps:
       - name: ⬇️ Checkout repository
@@ -188,7 +194,14 @@ jobs:
           echo "🔥 Starting Compilation..."
           START_TIME=$(date +%s)
 
-          TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
+          if [[ "${DRIVER_ONLY:-false}" == "true" ]]; then
+              BUILD_TARGET="W=1 drivers/power/supply/qcom/"
+              TG_RESPONSE=$(tg_send "🚀 <b>Driver Build Started</b>%0ACompiling only QCOM Power Driver.")
+          else
+              BUILD_TARGET=""
+              TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
+          fi
+
           MSG_ID=$(echo "$TG_RESPONSE" | jq -r '.result.message_id // empty' 2>/dev/null || echo "")
 
           if [[ -n "$MSG_ID" ]]; then
@@ -199,7 +212,7 @@ jobs:
               echo "⚠️ Failed to get Message ID. Live updates disabled."
           fi
 
-          if ! make -j"$(nproc)" O=out \
+          if ! make -j"$(nproc)" O=out $BUILD_TARGET \
               CC="ccache clang" \
               HOSTCC=clang \
               HOSTLD=ld.lld \
@@ -218,6 +231,12 @@ jobs:
               [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "❌ <b>Build Failed</b>%0ACheck attached log."
               tg_doc "$KERNEL_DIR/build.log" "❌ Build log — $(date '+%d/%m/%Y %H:%M')"
               exit 1
+          fi
+
+          if [[ "${DRIVER_ONLY:-false}" == "true" ]]; then
+              [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Driver Compile Success</b>%0A Check GitHub Actions log for warnings."
+              tg_doc "$KERNEL_DIR/build.log" "✅ Driver Build Log — $(date '+%d/%m/%Y %H:%M')"
+              exit 0
           fi
 
           [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Compilation Done</b>%0APackaging Kernel..."
