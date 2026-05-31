@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       driver_only:
-        description: 'Compile QCOM Power Driver Only'
+        description: 'Compile Power Driver Only'
         required: false
         type: boolean
         default: false
@@ -195,8 +195,8 @@ jobs:
           START_TIME=$(date +%s)
 
           if [[ "${DRIVER_ONLY:-false}" == "true" ]]; then
-              BUILD_TARGET="W=1 drivers/power/supply/qcom/"
-              TG_RESPONSE=$(tg_send "🚀 <b>Driver Build Started</b>%0ACompiling only QCOM Power Driver.")
+              BUILD_TARGET="W=1 drivers/power/supply/"
+              TG_RESPONSE=$(tg_send "🚀 <b>Driver Build Started</b>%0ACompiling only Power Driver.")
           else
               BUILD_TARGET=""
               TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
