@@ -202,12 +202,15 @@ jobs:
 
           if [[ "${DRIVER_ONLY:-false}" == "true" ]]; then
               BUILD_TARGET="W=1 drivers/power/supply/"
+              EXTRA_CFLAGS="-Wno-cast-function-type-mismatch -Wno-missing-prototypes -Wno-format -Wno-unused-but-set-variable -Wno-unused-const-variable"
               TG_RESPONSE=$(tg_send "🚀 <b>Driver Build Started</b>%0ACompiling only Power Driver.")
           elif [[ "${FULL_W1_BUILD:-false}" == "true" ]]; then
               BUILD_TARGET="W=1"
+              EXTRA_CFLAGS="-Wno-cast-function-type-mismatch -Wno-missing-prototypes -Wno-format -Wno-unused-but-set-variable -Wno-unused-const-variable"
               TG_RESPONSE=$(tg_send "🚀 <b>Full W=1 Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
           else
               BUILD_TARGET=""
+              EXTRA_CFLAGS=""
               TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
           fi
 
@@ -221,7 +224,7 @@ jobs:
               echo "⚠️ Failed to get Message ID. Live updates disabled."
           fi
 
-          if ! make -j"$(nproc)" O=out $BUILD_TARGET \
+          if ! make -j"$(nproc)" O=out $BUILD_TARGET KCFLAGS="$EXTRA_CFLAGS" \
               CC="ccache clang" \
               HOSTCC=clang \
               HOSTLD=ld.lld \
