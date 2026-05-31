@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      full_w1_build:
+        description: 'Full Build with W=1'
+        required: false
+        type: boolean
+        default: false
       upload_artifact:
         description: 'Upload Artifact to GitHub'
         required: false
@@ -28,6 +33,7 @@ jobs:
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
       DRIVER_ONLY: ${{ inputs.driver_only }}
+      FULL_W1_BUILD: ${{ inputs.full_w1_build }}
 
     steps:
       - name: ⬇️ Checkout repository
@@ -197,6 +203,9 @@ jobs:
           if [[ "${DRIVER_ONLY:-false}" == "true" ]]; then
               BUILD_TARGET="W=1 drivers/power/supply/"
               TG_RESPONSE=$(tg_send "🚀 <b>Driver Build Started</b>%0ACompiling only Power Driver.")
+          elif [[ "${FULL_W1_BUILD:-false}" == "true" ]]; then
+              BUILD_TARGET="W=1"
+              TG_RESPONSE=$(tg_send "🚀 <b>Full W=1 Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
           else
               BUILD_TARGET=""
               TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
