@@ -1,49 +1,290 @@
-name: 🚀 KSU-8937
+name: 🚀 KSU-8937 Build
 
 on:
   workflow_dispatch:
+    inputs:
+      clean_build:
+        description: 'Clean Build (Wipe Ccache)'
+        required: false
+        type: boolean
+        default: false
+      analysis_target:
+        description: 'W=1 Static Analysis Target'
+        required: false
+        type: choice
+        default: 'None'
+        options:
+          - 'None'
+          - 'Power (drivers/power/supply)'
+          - 'Display (drivers/gpu/drm/msm)'
+          - 'Camera (drivers/media/platform/msm/camera_v2)'
+          - 'Input (drivers/input)'
+          - 'Audio (techpack/audio)'
+          - 'Sched/CPU (kernel/sched drivers/cpufreq)'
+          - 'Full Kernel'
+      upload_artifact:
+        description: 'Upload Artifact to GitHub'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build_kernel:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: KSU-8937
+      CLANG_VERSION: r547379
+      CLANG_PATH: tools
+      CLEAN_BUILD: ${{ inputs.clean_build }}
+      ANALYSIS_TARGET: ${{ inputs.analysis_target }}
 
     steps:
-      - name: ⬇️ Checkout Code
-        uses: actions/checkout@v3
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v6.0.2
 
-      - name: 🧰 Setup QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: 🐳 Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: 📦 Install Dependencies
+      - name: 📦 Install build dependencies
         run: |
-          echo "🧰 Installing required packages..."
-          sudo apt update
-          sudo apt install -y git bison flex libxml2 libssl-dev bc zip default-jre python3 python3-pip wget curl aria2 cpio bash ccache jq \
-            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses-dev
-          echo "✅ Dependencies installed successfully!"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git bison flex libxml2-dev libssl-dev bc zip default-jre \
+            python3 python3-pip wget curl aria2 cpio bash ccache jq \
+            libncurses-dev lld build-essential libstdc++6 \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
 
-      - name: 💾 Cache ccache
-        uses: actions/cache@v3
+      - name: 💾 Cache Toolchain & Ccache
+        id: cache-env
+        uses: actions/cache@v5.0.5
         with:
-          path: /tmp/ccache
-          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }}
+          path: |
+            /tmp/ccache
+            ${{ github.workspace }}/${{ env.CLANG_PATH }}
+          key: ${{ runner.os }}-clang-${{ env.CLANG_VERSION }}-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-ccache-
+            ${{ runner.os }}-clang-${{ env.CLANG_VERSION }}-
 
-      - name: 🛠️ Build Kernel
+      - name: 🛠️ Build kernel
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          KERNEL_SOURCE: https://github.com/AzyrRuthless/kernel_msm-4.19
+          KERNEL_REPO_URL: https://github.com/AzyrRuthless/kernel_msm-4.19
           KERNEL_BRANCH: mithorium/a13/master
         run: |
-          echo "🚀 Starting the kernel build process..."
-          chmod +x 8937v2.sh
-          ./8937v2.sh
-          echo "🎉 Kernel build completed!"
-          
+          #!/bin/bash
+          set -euo pipefail
+
+          readonly WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
+          readonly KERNEL_DIR="$WORKSPACE/8937_Kernel"
+          readonly TOOLS_DIR="$WORKSPACE/tools"
+          readonly CLANG_DIR="$TOOLS_DIR/clang-$CLANG_VERSION"
+          readonly DEFCONFIG="los_defconfig"
+          readonly ANYKERNEL_BRANCH="msm8937"
+
+          function cleanup() {
+              if [[ -n "${MONITOR_PID:-}" ]]; then
+                  kill "$MONITOR_PID" 2>/dev/null || true
+              fi
+          }
+          trap cleanup EXIT
+
+          tg_send() {
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+                  -d chat_id="$TELEGRAM_CHAT_ID" \
+                  -d text="$1" \
+                  -d parse_mode="HTML" || true
+          }
+
+          tg_edit() {
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText" \
+                  -d chat_id="$TELEGRAM_CHAT_ID" \
+                  -d message_id="$1" \
+                  -d text="$2" \
+                  -d parse_mode="HTML" >/dev/null || true
+          }
+
+          tg_doc() {
+              local file="$1" caption="$2"
+              [[ -f "$file" ]] || { echo "File not found: $file"; return 1; }
+              curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendDocument" \
+                  -F chat_id="$TELEGRAM_CHAT_ID" \
+                  -F document="@$file" \
+                  -F caption="$caption" \
+                  -F parse_mode="HTML" >/dev/null || true
+          }
+
+          start_monitor() {
+              local msg_id="$1"
+              local start_time="$2"
+
+              while true; do
+                  sleep 30
+                  local current_time
+                  current_time=$(date +%s)
+                  local diff=$((current_time - start_time))
+                  local min=$((diff / 60))
+                  local sec=$((diff % 60))
+                  local obj_count
+                  obj_count=$(find out -name "*.o" 2>/dev/null | wc -l)
+
+                  local status_txt="<b>🚀 KSU-8937 Build Progress</b>%0A%0A"
+                  status_txt+="<b>• Compiler:</b> ${CLANG_DISPLAY}%0A"
+                  status_txt+="<b>• Objects Built:</b> ${obj_count}%0A"
+                  status_txt+="<b>• Duration:</b> ${min}m ${sec}s%0A"
+                  status_txt+="<b>• Status:</b> Compiling..."
+
+                  tg_edit "$msg_id" "$status_txt"
+              done
+          }
+
+          echo "🚀 Setup Environment..."
+
+          if [[ -d "$KERNEL_DIR" ]]; then rm -rf "$KERNEL_DIR"; fi
+
+          git clone --quiet --depth=1 -b "$KERNEL_BRANCH" "$KERNEL_REPO_URL" "$KERNEL_DIR"
+
+          cd "$KERNEL_DIR"
+
+          echo "🔧 Setting up KernelSU..."
+          KSU_VERSION=$(curl -s https://api.github.com/repos/backslashxx/KernelSU/releases/latest | jq -r .tag_name)
+          echo "📌 Fetching KernelSU Tag: $KSU_VERSION"
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- "$KSU_VERSION"
+
+          mkdir -p "$TOOLS_DIR"
+          export CCACHE_DIR="/tmp/ccache"
+          export USE_CCACHE=1
+
+          if [[ "${CLEAN_BUILD:-false}" == "true" ]]; then
+              echo "🧹 Clean Build requested: Clearing Ccache..."
+              ccache -C
+              ccache -z
+          else
+              echo "♻️  Using existing Ccache..."
+          fi
+
+          ccache -M 10G -o compression=true
+
+          if [[ ! -x "$CLANG_DIR/bin/clang" ]]; then
+              echo "⬇️ Cloning Clang $CLANG_VERSION..."
+              git clone --quiet --depth=1 \
+                  https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379 "$CLANG_DIR"
+          fi
+
+          export ARCH=arm64
+          export KBUILD_BUILD_USER="Audemars"
+          export KBUILD_BUILD_HOST="ROG-G834JYR"
+          export PATH="$CLANG_DIR/bin:$PATH"
+
+          CLANG_DISPLAY=$(clang --version | head -n1)
+
+          echo "🔧 Configuring..."
+          make O=out "$DEFCONFIG"
+
+          if [[ -f out/.config ]]; then
+              RAW_VERSION=$(grep "CONFIG_LOCALVERSION=" out/.config | cut -d'"' -f2 || echo "Kinesis")
+              RAW_VERSION="${RAW_VERSION#-}"
+              IFS=- read -r KERNEL_VARIANT KERNEL_CODENAME RELEASE_VERSION <<< "$RAW_VERSION"
+          fi
+
+          KERNEL_VARIANT=${KERNEL_VARIANT:-"Kinesis"}
+          KERNEL_CODENAME=${KERNEL_CODENAME:-"8937"}
+          RELEASE_VERSION=${RELEASE_VERSION:-"Test"}
+
+          echo "🔥 Starting Compilation..."
+          START_TIME=$(date +%s)
+
+          if [[ "${ANALYSIS_TARGET}" == "Power (drivers/power/supply)" ]]; then
+              BUILD_TARGET="W=1 drivers/power/supply/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Power Supply")
+          elif [[ "${ANALYSIS_TARGET}" == "Display (drivers/gpu/drm/msm)" ]]; then
+              BUILD_TARGET="W=1 drivers/gpu/drm/msm/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Display/DRM")
+          elif [[ "${ANALYSIS_TARGET}" == "Camera (drivers/media/platform/msm/camera_v2)" ]]; then
+              BUILD_TARGET="W=1 drivers/media/platform/msm/camera_v2/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Camera")
+          elif [[ "${ANALYSIS_TARGET}" == "Input (drivers/input)" ]]; then
+              BUILD_TARGET="W=1 drivers/input/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Input (Touch/FP)")
+          elif [[ "${ANALYSIS_TARGET}" == "Audio (techpack/audio)" ]]; then
+              BUILD_TARGET="W=1 techpack/audio/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Audio")
+          elif [[ "${ANALYSIS_TARGET}" == "Sched/CPU (kernel/sched drivers/cpufreq)" ]]; then
+              BUILD_TARGET="W=1 kernel/sched/ drivers/cpufreq/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Sched & CPUFreq")
+          elif [[ "${ANALYSIS_TARGET}" == "Full Kernel" ]]; then
+              BUILD_TARGET="W=1"
+              TG_RESPONSE=$(tg_send "🚀 <b>Full W=1 Build Started</b>%0A<code>${CLANG_DISPLAY}</code>%0AClean Build: <b>${CLEAN_BUILD:-false}</b>")
+          else
+              BUILD_TARGET=""
+              TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0A<code>${CLANG_DISPLAY}</code>%0AClean Build: <b>${CLEAN_BUILD:-false}</b>")
+          fi
+
+          MSG_ID=$(echo "$TG_RESPONSE" | jq -r '.result.message_id // empty' 2>/dev/null || echo "")
+
+          if [[ -n "$MSG_ID" ]]; then
+              echo "📡 Live monitoring started (Message ID: $MSG_ID)"
+              start_monitor "$MSG_ID" "$START_TIME" &
+              MONITOR_PID=$!
+          else
+              echo "⚠️ Failed to get Message ID. Live updates disabled."
+          fi
+
+          if ! make -j"$(nproc)" O=out $BUILD_TARGET \
+              CC="ccache clang" \
+              HOSTCC=clang \
+              HOSTLD=ld.lld \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              STRIP=llvm-strip \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              LLVM=1 \
+              LLVM_IAS=1 \
+              CROSS_COMPILE=aarch64-linux-gnu- \
+              CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+              2>&1 | tee build.log; then
+
+              [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "❌ <b>Build Failed</b>%0ACheck attached log."
+              tg_doc "$KERNEL_DIR/build.log" "❌ Build log — $(date '+%d/%m/%Y %H:%M')"
+              exit 1
+          fi
+
+          if [[ "${ANALYSIS_TARGET}" != "None" && "${ANALYSIS_TARGET}" != "Full Kernel" && -n "${ANALYSIS_TARGET}" ]]; then
+              [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Analysis Compile Success</b>%0ACheck GitHub Actions log for warnings."
+              tg_doc "$KERNEL_DIR/build.log" "✅ Analysis Build Log — $(date '+%d/%m/%Y %H:%M')"
+              exit 0
+          fi
+
+          [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Compilation Done</b>%0APackaging Kernel..."
+
+          echo "📦 Packaging..."
+          git clone --quiet --depth=1 -b "$ANYKERNEL_BRANCH" "https://github.com/AzyrRuthless/AnyKernel3" anykernel
+
+          if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
+              cp out/arch/arm64/boot/Image.gz-dtb anykernel/Image.gz-dtb
+          elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
+              cp out/arch/arm64/boot/Image.gz anykernel/
+          fi
+
+          TIME_TAG=$(date '+%d%m%Y')
+          ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${TIME_TAG}.zip"
+          ZIP_PATH="$KERNEL_DIR/$ZIP_NAME"
+
+          cd anykernel
+          zip -r9 "$ZIP_PATH" . -x "*.git*" "README.md" ".*" >/dev/null
+          cd ..
+
+          echo "ARTIFACT_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "ARTIFACT_PATH=${ZIP_PATH}" >> "$GITHUB_ENV"
+
+          FINAL_DURATION=$(( ($(date +%s) - START_TIME) / 60 ))m
+          [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Build Success</b>%0A%0A📦 File: <code>$ZIP_NAME</code>%0A⏱ Duration: $FINAL_DURATION"
+          tg_doc "$ZIP_PATH" "✅ Build by GitHub Actions"
+
+      - name: ☁️ Upload Artifact to GitHub
+        if: ${{ inputs.upload_artifact == true }}
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_PATH }}
+          compression-level: 0
