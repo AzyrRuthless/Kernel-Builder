@@ -203,8 +203,6 @@ jobs:
           echo "🔥 Starting Compilation..."
           START_TIME=$(date +%s)
 
-          EXTRA_CFLAGS="-w -Wuninitialized -Warray-bounds -Wimplicit-function-declaration -Wreturn-type -Wincompatible-pointer-types -Wint-conversion -Wsizeof-pointer-div -Wdiv-by-zero -Wshift-count-overflow -Wunused-comparison"
-
           if [[ "${ANALYSIS_TARGET}" == "Power (drivers/power/supply)" ]]; then
               BUILD_TARGET="W=1 drivers/power/supply/"
               TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Power Supply")
@@ -228,7 +226,6 @@ jobs:
               TG_RESPONSE=$(tg_send "🚀 <b>Full W=1 Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
           else
               BUILD_TARGET=""
-              EXTRA_CFLAGS=""
               TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0AInitializing compilation with Clean Build: <b>${CLEAN_BUILD:-false}</b>")
           fi
 
@@ -242,7 +239,7 @@ jobs:
               echo "⚠️ Failed to get Message ID. Live updates disabled."
           fi
 
-          if ! make -j"$(nproc)" O=out $BUILD_TARGET KCFLAGS="$EXTRA_CFLAGS" \
+          if ! make -j"$(nproc)" O=out $BUILD_TARGET \
               CC="ccache clang" \
               HOSTCC=clang \
               HOSTLD=ld.lld \
