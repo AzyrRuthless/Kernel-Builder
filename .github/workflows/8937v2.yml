@@ -261,7 +261,7 @@ jobs:
           git clone --quiet --depth=1 -b "$ANYKERNEL_BRANCH" "https://github.com/AzyrRuthless/AnyKernel3" anykernel
 
           if [[ -f out/arch/arm64/boot/Image.gz-dtb ]]; then
-              cp out/arch/arm64/boot/Image.gz-dtb anykernel/Image.gz-dtb
+              cp out/arch/arm64/boot/Image.gz-dtb anykernel/Image.gz
           elif [[ -f out/arch/arm64/boot/Image.gz ]]; then
               cp out/arch/arm64/boot/Image.gz anykernel/
           fi

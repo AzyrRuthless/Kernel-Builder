@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: NONKSU-Kinesis
-      CLANG_VERSION: r584948
+      CLANG_VERSION: r596125
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
       ANALYSIS_TARGET: ${{ inputs.analysis_target }}
@@ -167,9 +167,13 @@ jobs:
           ccache -M 10G -o compression=true
 
           if [[ ! -x "$CLANG_DIR/bin/clang" ]]; then
-              echo "⬇️ Cloning Clang $CLANG_VERSION..."
-              git clone --quiet --depth=1 \
-                  https://gitea.com/ihsanulrahman/aosp-clang-22 "$CLANG_DIR"
+              echo "⬇️ Downloading Clang $CLANG_VERSION..."
+              mkdir -p "$CLANG_DIR"
+              wget --quiet \
+                  "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz" \
+                  -O /tmp/clang.tar.gz
+              tar -xf /tmp/clang.tar.gz -C "$CLANG_DIR"
+              rm -f /tmp/clang.tar.gz
           fi
 
           export ARCH=arm64
