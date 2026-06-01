@@ -316,7 +316,11 @@ jobs:
           find out/arch/arm64/boot/dts/qcom -name "cust-atoll-ab.dtb" -exec cp {} anykernel/dtb/ \;
 
           TIME_TAG=$(date '+%d%m%Y')
-          ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${TIME_TAG}.zip"
+          if [[ -n "$RELEASE_VERSION" && "$RELEASE_VERSION" != "Test" ]]; then
+              ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${TIME_TAG}.zip"
+          else
+              ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${TIME_TAG}.zip"
+          fi
           ZIP_PATH="$KERNEL_DIR/$ZIP_NAME"
 
           cd anykernel

@@ -32,7 +32,7 @@ jobs:
   build_kernel:
     runs-on: ubuntu-latest
     env:
-      PROJECT_NAME: NONKSU-Kinesis
+      PROJECT_NAME: NONKSU
       CLANG_VERSION: r596125
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
@@ -278,7 +278,11 @@ jobs:
           find out/arch/arm64/boot/dts/qcom -name "cust-atoll-ab.dtb" -exec cp {} anykernel/dtb/ \;
 
           TIME_TAG=$(date '+%d%m%Y')
-          ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${TIME_TAG}.zip"
+          if [[ -n "$RELEASE_VERSION" && "$RELEASE_VERSION" != "Test" ]]; then
+              ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${RELEASE_VERSION}-${TIME_TAG}.zip"
+          else
+              ZIP_NAME="${PROJECT_NAME}-${KERNEL_VARIANT}-${KERNEL_CODENAME}-${TIME_TAG}.zip"
+          fi
           ZIP_PATH="$KERNEL_DIR/$ZIP_NAME"
 
           cd anykernel
