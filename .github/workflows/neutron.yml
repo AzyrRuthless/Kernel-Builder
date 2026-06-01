@@ -8,6 +8,20 @@ on:
         required: false
         type: boolean
         default: false
+      analysis_target:
+        description: 'W=1 Static Analysis Target'
+        required: false
+        type: choice
+        default: 'None'
+        options:
+          - 'None'
+          - 'Power (drivers/power/supply)'
+          - 'Display (drivers/gpu/drm/msm)'
+          - 'Camera (drivers/media/platform/msm/camera_v2)'
+          - 'Input (drivers/input)'
+          - 'Audio (techpack/audio)'
+          - 'Sched/CPU (kernel/sched drivers/cpufreq)'
+          - 'Full Kernel'
       upload_artifact:
         description: 'Upload Artifact to GitHub'
         required: false
@@ -21,6 +35,7 @@ jobs:
       PROJECT_NAME: Neutron
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
+      ANALYSIS_TARGET: ${{ inputs.analysis_target }}
 
     steps:
       - name: ⬇️ Checkout repository
@@ -138,7 +153,9 @@ jobs:
           cd "$KERNEL_DIR"
 
           echo "🔧 Setting up KernelSU..."
-          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- master
+          KSU_VERSION=$(curl -s https://api.github.com/repos/backslashxx/KernelSU/releases/latest | jq -r .tag_name)
+          echo "📌 Fetching KernelSU Tag: $KSU_VERSION"
+          curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- "$KSU_VERSION"
 
           mkdir -p "$NEUTRON_DIR"
           export CCACHE_DIR="/tmp/ccache"
@@ -197,7 +214,32 @@ jobs:
           echo "🔥 Starting Compilation..."
           START_TIME=$(date +%s)
 
-          TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0ACompiler: <b>Neutron Clang</b>%0A<code>${CLANG_VER}</code>%0AClean Build: <b>${CLEAN_BUILD:-false}</b>")
+          if [[ "${ANALYSIS_TARGET}" == "Power (drivers/power/supply)" ]]; then
+              BUILD_TARGET="W=1 drivers/power/supply/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Power Supply")
+          elif [[ "${ANALYSIS_TARGET}" == "Display (drivers/gpu/drm/msm)" ]]; then
+              BUILD_TARGET="W=1 drivers/gpu/drm/msm/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Display/DRM")
+          elif [[ "${ANALYSIS_TARGET}" == "Camera (drivers/media/platform/msm/camera_v2)" ]]; then
+              BUILD_TARGET="W=1 drivers/media/platform/msm/camera_v2/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Camera")
+          elif [[ "${ANALYSIS_TARGET}" == "Input (drivers/input)" ]]; then
+              BUILD_TARGET="W=1 drivers/input/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Input (Touch/FP)")
+          elif [[ "${ANALYSIS_TARGET}" == "Audio (techpack/audio)" ]]; then
+              BUILD_TARGET="W=1 techpack/audio/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Audio")
+          elif [[ "${ANALYSIS_TARGET}" == "Sched/CPU (kernel/sched drivers/cpufreq)" ]]; then
+              BUILD_TARGET="W=1 kernel/sched/ drivers/cpufreq/"
+              TG_RESPONSE=$(tg_send "🚀 <b>W=1 Build Started</b>%0ATarget: Sched & CPUFreq")
+          elif [[ "${ANALYSIS_TARGET}" == "Full Kernel" ]]; then
+              BUILD_TARGET="W=1"
+              TG_RESPONSE=$(tg_send "🚀 <b>Full W=1 Build Started</b>%0ACompiler: <b>Neutron Clang</b>%0A<code>${CLANG_VER}</code>%0AClean Build: <b>${CLEAN_BUILD:-false}</b>")
+          else
+              BUILD_TARGET=""
+              TG_RESPONSE=$(tg_send "🚀 <b>Build Started</b>%0ACompiler: <b>Neutron Clang</b>%0A<code>${CLANG_VER}</code>%0AClean Build: <b>${CLEAN_BUILD:-false}</b>")
+          fi
+
           MSG_ID=$(echo "$TG_RESPONSE" | jq -r '.result.message_id // empty' 2>/dev/null || echo "")
 
           if [[ -n "$MSG_ID" ]]; then
@@ -208,7 +250,7 @@ jobs:
               echo "⚠️ Failed to get Message ID. Live updates disabled."
           fi
 
-          if ! make -j"$(nproc)" O=out \
+          if ! make -j"$(nproc)" O=out $BUILD_TARGET \
               CC="ccache clang" \
               HOSTCC=clang \
               HOSTLD=ld.lld \
@@ -227,6 +269,12 @@ jobs:
               [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "❌ <b>Build Failed</b>%0ACheck attached log."
               tg_doc "$KERNEL_DIR/build.log" "❌ Build log — $(date '+%d/%m/%Y %H:%M')"
               exit 1
+          fi
+
+          if [[ "${ANALYSIS_TARGET}" != "None" && "${ANALYSIS_TARGET}" != "Full Kernel" && -n "${ANALYSIS_TARGET}" ]]; then
+              [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Analysis Compile Success</b>%0ACheck GitHub Actions log for warnings."
+              tg_doc "$KERNEL_DIR/build.log" "✅ Analysis Build Log — $(date '+%d/%m/%Y %H:%M')"
+              exit 0
           fi
 
           [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" "✅ <b>Compilation Done</b>%0APackaging Kernel..."
