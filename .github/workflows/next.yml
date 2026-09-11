@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: KSU
-      CLANG_VERSION: r596125
+      CLANG_VERSION: r614150
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
       ANALYSIS_TARGET: ${{ inputs.analysis_target }}
