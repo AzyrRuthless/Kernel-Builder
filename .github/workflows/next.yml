@@ -3,6 +3,11 @@ name: 🚀 16-KSU Build
 on:
   workflow_dispatch:
     inputs:
+      clang_version:
+        description: 'AOSP Clang Version'
+        required: false
+        type: string
+        default: 'r614150'
       clean_build:
         description: 'Clean Build (Wipe Ccache)'
         required: false
@@ -33,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: KSU
-      CLANG_VERSION: r614150
+      CLANG_VERSION: ${{ inputs.clang_version || 'r614150' }}
       CLANG_PATH: tools
       CLEAN_BUILD: ${{ inputs.clean_build }}
       ANALYSIS_TARGET: ${{ inputs.analysis_target }}
@@ -78,6 +83,8 @@ jobs:
           readonly WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
           readonly KERNEL_DIR="$WORKSPACE/Kinesis_Kernel"
           readonly TOOLS_DIR="$WORKSPACE/tools"
+          CLANG_VERSION=$(echo "${CLANG_VERSION:-r614150}" | tr -d '[:space:]')
+          CLANG_VERSION="${CLANG_VERSION:-r614150}"
           readonly CLANG_DIR="$TOOLS_DIR/clang-$CLANG_VERSION"
           readonly DEFCONFIG="vendor/xiaomi/miatoll_defconfig"
           readonly ANYKERNEL_BRANCH="Ivory"
@@ -157,6 +164,38 @@ jobs:
           echo "📌 Fetching KernelSU Tag: $KSU_VERSION"
           curl -LSs "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- "$KSU_VERSION"
 
+          echo "🔧 Setting up NoMount..."
+          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
+
+          echo "🔍 Validating NoMount integration..."
+
+          if [[ ! -d "fs/nomount" ]]; then
+              echo "❌ NoMount source directory was not created."
+              exit 1
+          fi
+
+          if [[ ! -f "fs/nomount/Kconfig" ]]; then
+              echo "❌ NoMount Kconfig not found."
+              exit 1
+          fi
+
+          if [[ ! -f "fs/nomount/Makefile" ]]; then
+              echo "❌ NoMount Makefile not found."
+              exit 1
+          fi
+
+          if ! grep -Fq 'source "fs/nomount/Kconfig"' fs/Kconfig; then
+              echo "❌ fs/Kconfig is missing NoMount Kconfig integration."
+              exit 1
+          fi
+
+          if ! grep -Fq 'obj-$(CONFIG_NOMOUNT)' fs/Makefile; then
+              echo "❌ fs/Makefile is missing NoMount integration."
+              exit 1
+          fi
+
+          echo "✅ NoMount source and kernel integration detected."
+
           mkdir -p "$TOOLS_DIR"
           export CCACHE_DIR="/tmp/ccache"
           export USE_CCACHE=1
@@ -190,6 +229,13 @@ jobs:
 
           echo "🔧 Configuring..."
           make O=out "$DEFCONFIG"
+
+          if ! grep -Fq 'CONFIG_NOMOUNT=y' out/.config; then
+              echo "❌ CONFIG_NOMOUNT=y is not enabled."
+              exit 1
+          fi
+
+          echo "✅ CONFIG_NOMOUNT=y"
 
           if [[ -f out/.config ]]; then
               RAW_VERSION=$(grep "CONFIG_LOCALVERSION=" out/.config | cut -d'"' -f2 || echo "Kinesis")

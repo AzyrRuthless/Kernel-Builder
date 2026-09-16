@@ -11,6 +11,11 @@ on:
         options:
           - 'AOSP Clang'
           - 'Neutron Clang'
+      clang_version:
+        description: 'AOSP Clang Version'
+        required: false
+        type: string
+        default: 'r614150'
       clean_build:
         description: 'Clean Build (Wipe Ccache)'
         required: false
@@ -41,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PROJECT_NAME: CLMP2
-      CLANG_VERSION: r596125
+      CLANG_VERSION: ${{ inputs.clang_version || 'r614150' }}
       CLANG_PATH: tools
       TOOLCHAIN: ${{ inputs.toolchain }}
       CLEAN_BUILD: ${{ inputs.clean_build }}
@@ -109,6 +114,8 @@ jobs:
           readonly WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
           readonly KERNEL_DIR="$WORKSPACE/Kinesis_Kernel"
           readonly TOOLS_DIR="$WORKSPACE/tools"
+          CLANG_VERSION=$(echo "${CLANG_VERSION:-r614150}" | tr -d '[:space:]')
+          CLANG_VERSION="${CLANG_VERSION:-r614150}"
           readonly CLANG_DIR="$TOOLS_DIR/clang-$CLANG_VERSION"
           readonly NEUTRON_DIR="$TOOLS_DIR/neutron-clang"
           readonly DEFCONFIG="vendor/xiaomi/miatoll_defconfig"
