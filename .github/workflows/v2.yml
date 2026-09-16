@@ -1,0 +1,67 @@
+name: "🚀 VelionV2-KSU"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: KSU-Velion
+
+    steps:
+      - name: ⬇️ Checkout Code
+        uses: actions/checkout@v3
+
+      - name: 🧰 Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 🐳 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 💾 Cache APT packages
+        uses: actions/cache@v3
+        with:
+          path: /var/cache/apt/archives
+          key: ${{ runner.os }}-apt-${{ hashFiles('v2.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-
+
+      - name: 📦 Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git bison flex libxml2 libssl-dev bc zip default-jre \
+            python3 python3-pip wget curl cpio bash ccache jq \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libncurses-dev
+
+      - name: 💾 Cache ccache
+        uses: actions/cache@v3
+        with:
+          path: /tmp/ccache
+          key: ${{ runner.os }}-ccache-${{ hashFiles('**/Makefile') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: 💾 Cache Clang r547379
+        uses: actions/cache@v3
+        with:
+          path: ~/clang-r547379
+          key: ${{ runner.os }}-clang-r547379
+
+      - name: 🛠️ Build Kernel
+        id: build
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          KERNEL_SOURCE: ${{ secrets.KERNEL_SOURCE }}
+          KERNEL_BRANCH: V2
+        run: |
+          chmod +x v2.sh
+          ./v2.sh
+
+      - name: 📤 Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-artifacts
+          path: ${{ steps.build.outputs.artifact_dir }}

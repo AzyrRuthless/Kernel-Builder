@@ -1,0 +1,61 @@
+name: 🚀 a72 Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      clean_build:
+        description: 'Clean Build (Wipe Ccache)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build_kernel:
+    runs-on: ubuntu-latest
+    env:
+      PROJECT_NAME: CLMP
+      BUILD_SCRIPT: a72.sh
+      # Define Clang version here to manage caching efficiently
+      CLANG_VERSION: r584948b
+      CLANG_PATH: tools
+      # Pass the boolean input to the environment
+      CLEAN_BUILD: ${{ inputs.clean_build }}
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📦 Install build dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y --no-install-recommends \
+            git bison flex libxml2-dev libssl-dev bc zip default-jre \
+            python3 python3-pip wget curl aria2 cpio bash ccache jq \
+            libncurses-dev lld build-essential libstdc++6 \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi g++-arm-linux-gnueabi
+
+      - name: 💾 Cache Toolchain & Ccache
+        id: cache-env
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/ccache
+            ${{ github.workspace }}/${{ env.CLANG_PATH }}
+          # Key includes run_id to ensure cache is always saved as a new entry
+          key: ${{ runner.os }}-build-${{ env.CLANG_VERSION }}-${{ github.run_id }}
+          # Restore from the latest cache matching the Clang version
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.CLANG_VERSION }}-
+
+      - name: 🛠️ Build kernel
+        env:
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GL_DEPLOY_USER: ${{ secrets.GL_DEPLOY_USER }}
+          GL_DEPLOY_TOKEN: ${{ secrets.GL_DEPLOY_TOKEN }}
+          KERNEL_REPO_URL: ${{ secrets.KERNEL_REPO_URL }}
+          KERNEL_BRANCH: a72
+        run: |
+          chmod +x $BUILD_SCRIPT
+          ./$BUILD_SCRIPT
