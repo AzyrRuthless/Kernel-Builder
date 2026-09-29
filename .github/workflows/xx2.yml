@@ -107,6 +107,7 @@ jobs:
           GL_DEPLOY_TOKEN: ${{ secrets.GL_DEPLOY_TOKEN }}
           KERNEL_REPO_URL: ${{ secrets.KERNEL_REPO_URL }}
           KERNEL_BRANCH: NadirCLMP2
+          AOSP_COOKIE: ${{ secrets.AOSP_COOKIE || secrets.AOSP_COOKIES || '' }}
         run: |
           #!/bin/bash
           set -euo pipefail
@@ -122,7 +123,7 @@ jobs:
           readonly ANYKERNEL_BRANCH="Ivory"
 
           function cleanup() {
-              rm -f ~/.netrc
+              rm -f ~/.netrc ~/.gitcookies
               if [[ -n "${MONITOR_PID:-}" ]]; then
                   kill "$MONITOR_PID" 2>/dev/null || true
               fi
@@ -183,6 +184,18 @@ jobs:
 
           echo "🚀 Setup Environment..."
 
+          if [[ -n "${AOSP_COOKIE:-}" ]]; then
+              echo "🔑 Setting up AOSP Git credentials..."
+              touch ~/.gitcookies
+              chmod 600 ~/.gitcookies
+              git config --global http.cookiefile ~/.gitcookies
+              if [[ "$AOSP_COOKIE" == *"gitcookies"* ]] || [[ "$AOSP_COOKIE" == *"git config"* ]]; then
+                  bash -c "$AOSP_COOKIE" || true
+              else
+                  echo "$AOSP_COOKIE" | tr ',' '\t' >> ~/.gitcookies
+              fi
+          fi
+
           if [[ -d "$KERNEL_DIR" ]]; then
               rm -rf "$KERNEL_DIR"
           fi
@@ -208,37 +221,6 @@ jobs:
               "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" \
               | bash -s -- "$KSU_VERSION"
 
-          echo "🔧 Setting up NoMount..."
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
-
-          echo "🔍 Validating NoMount integration..."
-
-          if [[ ! -d "fs/nomount" ]]; then
-              echo "❌ NoMount source directory was not created."
-              exit 1
-          fi
-
-          if [[ ! -f "fs/nomount/Kconfig" ]]; then
-              echo "❌ NoMount Kconfig not found."
-              exit 1
-          fi
-
-          if [[ ! -f "fs/nomount/Makefile" ]]; then
-              echo "❌ NoMount Makefile not found."
-              exit 1
-          fi
-
-          if ! grep -Fq 'source "fs/nomount/Kconfig"' fs/Kconfig; then
-              echo "❌ fs/Kconfig is missing NoMount Kconfig integration."
-              exit 1
-          fi
-
-          if ! grep -Fq 'obj-$(CONFIG_NOMOUNT)' fs/Makefile; then
-              echo "❌ fs/Makefile is missing NoMount integration."
-              exit 1
-          fi
-
-          echo "✅ NoMount source and kernel integration detected."
 
           mkdir -p "$TOOLS_DIR"
 
@@ -284,13 +266,20 @@ jobs:
               export PATH="$NEUTRON_DIR/bin:$PATH"
           else
               if [[ ! -x "$CLANG_DIR/bin/clang" ]]; then
-                  echo "⬇️ Downloading Clang $CLANG_VERSION..."
-
                   mkdir -p "$CLANG_DIR"
+                  CLANG_URL_AUTH="https://android.googlesource.com/a/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz"
+                  CLANG_URL_PUBLIC="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz"
 
-                  wget --quiet \
-                      "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz" \
-                      -O /tmp/clang.tar.gz
+                  if [[ -f ~/.gitcookies && -s ~/.gitcookies ]]; then
+                      echo "⬇️ Downloading Clang $CLANG_VERSION (authenticated)..."
+                      if ! curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_AUTH" -o /tmp/clang.tar.gz; then
+                          echo "⚠️ Authenticated URL with /a/ failed, trying public URL with cookie..."
+                          curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+                      fi
+                  else
+                      echo "⬇️ Downloading Clang $CLANG_VERSION (public)..."
+                      curl -f -s -L "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+                  fi
 
                   tar -xf /tmp/clang.tar.gz -C "$CLANG_DIR"
                   rm -f /tmp/clang.tar.gz
@@ -314,13 +303,6 @@ jobs:
           ln -s /tmp/out out
 
           make O=out "$DEFCONFIG"
-
-          if ! grep -Fq 'CONFIG_NOMOUNT=y' out/.config; then
-              echo "❌ CONFIG_NOMOUNT=y is not enabled."
-              exit 1
-          fi
-
-          echo "✅ CONFIG_NOMOUNT=y"
 
           if [[ -f out/.config ]]; then
               RAW_VERSION=$(grep "CONFIG_LOCALVERSION=" out/.config | cut -d'"' -f2 || echo "Kinesis")

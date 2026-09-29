@@ -76,6 +76,7 @@ jobs:
           GL_DEPLOY_TOKEN: ${{ secrets.GL_DEPLOY_TOKEN }}
           KERNEL_REPO_URL: ${{ secrets.KERNEL_REPO_URL }}
           KERNEL_BRANCH: 16
+          AOSP_COOKIE: ${{ secrets.AOSP_COOKIE || secrets.AOSP_COOKIES || '' }}
         run: |
           #!/bin/bash
           set -euo pipefail
@@ -90,7 +91,7 @@ jobs:
           readonly ANYKERNEL_BRANCH="Ivory"
 
           function cleanup() {
-              rm -f ~/.netrc
+              rm -f ~/.netrc ~/.gitcookies
               if [[ -n "${MONITOR_PID:-}" ]]; then
                   kill "$MONITOR_PID" 2>/dev/null || true
               fi
@@ -148,6 +149,18 @@ jobs:
 
           echo "🚀 Setup Environment..."
 
+          if [[ -n "${AOSP_COOKIE:-}" ]]; then
+              echo "🔑 Setting up AOSP Git credentials..."
+              touch ~/.gitcookies
+              chmod 600 ~/.gitcookies
+              git config --global http.cookiefile ~/.gitcookies
+              if [[ "$AOSP_COOKIE" == *"gitcookies"* ]] || [[ "$AOSP_COOKIE" == *"git config"* ]]; then
+                  bash -c "$AOSP_COOKIE" || true
+              else
+                  echo "$AOSP_COOKIE" | tr ',' '\t' >> ~/.gitcookies
+              fi
+          fi
+
           if [[ -d "$KERNEL_DIR" ]]; then rm -rf "$KERNEL_DIR"; fi
 
           REPO_HOST=$(echo "$KERNEL_REPO_URL" | awk -F/ '{print $3}')
@@ -174,11 +187,21 @@ jobs:
           ccache -M 10G -o compression=true
 
           if [[ ! -x "$CLANG_DIR/bin/clang" ]]; then
-              echo "⬇️ Downloading Clang $CLANG_VERSION..."
               mkdir -p "$CLANG_DIR"
-              wget --quiet \
-                  "https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz" \
-                  -O /tmp/clang.tar.gz
+              CLANG_URL_AUTH="https://android.googlesource.com/a/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz"
+              CLANG_URL_PUBLIC="https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz"
+
+              if [[ -f ~/.gitcookies && -s ~/.gitcookies ]]; then
+                  echo "⬇️ Downloading Clang $CLANG_VERSION (authenticated)..."
+                  if ! curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_AUTH" -o /tmp/clang.tar.gz; then
+                      echo "⚠️ Authenticated URL with /a/ failed, trying public URL with cookie..."
+                      curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+                  fi
+              else
+                  echo "⬇️ Downloading Clang $CLANG_VERSION (public)..."
+                  curl -f -s -L "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+              fi
+
               tar -xf /tmp/clang.tar.gz -C "$CLANG_DIR"
               rm -f /tmp/clang.tar.gz
           fi
