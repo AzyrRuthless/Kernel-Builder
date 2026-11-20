@@ -108,6 +108,7 @@ jobs:
           KERNEL_REPO_URL: ${{ secrets.KERNEL_REPO_URL }}
           KERNEL_BRANCH: NadirCLMP
           AOSP_COOKIE: ${{ secrets.AOSP_COOKIE || secrets.AOSP_COOKIES || '' }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           #!/bin/bash
           set -euo pipefail
@@ -122,11 +123,17 @@ jobs:
           readonly DEFCONFIG="vendor/xiaomi/miatoll_defconfig"
           readonly ANYKERNEL_BRANCH="Ivory"
 
-          function cleanup() {
-              rm -f ~/.netrc ~/.gitcookies
+          stop_monitor() {
               if [[ -n "${MONITOR_PID:-}" ]]; then
                   kill "$MONITOR_PID" 2>/dev/null || true
+                  wait "$MONITOR_PID" 2>/dev/null || true
+                  MONITOR_PID=""
               fi
+          }
+
+          function cleanup() {
+              rm -f ~/.netrc ~/.gitcookies
+              stop_monitor
           }
           trap cleanup EXIT
 
@@ -211,18 +218,18 @@ jobs:
           cd "$KERNEL_DIR"
 
           echo "🔧 Setting up KernelSU..."
-          KSU_VERSION=$(curl -s \
+          KSU_VERSION=$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} \
               https://api.github.com/repos/backslashxx/KernelSU/releases/latest \
-              | jq -r .tag_name)
-
+              | jq -r '.tag_name // empty')
+          if [[ -z "$KSU_VERSION" ]]; then
+              echo "❌ Failed to fetch latest KernelSU release tag."
+              exit 1
+          fi
           echo "📌 Fetching KernelSU Tag: $KSU_VERSION"
-
-          curl -LSs \
-              "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" \
-              | bash -s -- "$KSU_VERSION"
+          curl -fsSL "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- "$KSU_VERSION"
 
           echo "🔧 Setting up NoMount..."
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -
+          curl -fsSL "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh" | bash -
 
           echo "🔍 Validating NoMount integration..."
 
@@ -296,6 +303,13 @@ jobs:
               cd "$KERNEL_DIR"
               export PATH="$NEUTRON_DIR/bin:$PATH"
           else
+              download_clang() {
+                  local url="$1"
+                  shift
+                  rm -f /tmp/clang.tar.gz
+                  curl -f -s -L "$@" "$url" -o /tmp/clang.tar.gz && gzip -t /tmp/clang.tar.gz 2>/dev/null
+              }
+
               if [[ ! -x "$CLANG_DIR/bin/clang" ]]; then
                   mkdir -p "$CLANG_DIR"
                   CLANG_URL_AUTH="https://android.googlesource.com/a/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/mirror-goog-main-llvm-toolchain-source/clang-$CLANG_VERSION.tar.gz"
@@ -303,13 +317,16 @@ jobs:
 
                   if [[ -f ~/.gitcookies && -s ~/.gitcookies ]]; then
                       echo "⬇️ Downloading Clang $CLANG_VERSION (authenticated)..."
-                      if ! curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_AUTH" -o /tmp/clang.tar.gz; then
+                      if ! download_clang "$CLANG_URL_AUTH" --cookie ~/.gitcookies; then
                           echo "⚠️ Authenticated URL with /a/ failed, trying public URL with cookie..."
-                          curl -f -s -L --cookie ~/.gitcookies "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+                          if ! download_clang "$CLANG_URL_PUBLIC" --cookie ~/.gitcookies; then
+                              echo "⚠️ Cookie download failed, falling back to public download..."
+                              download_clang "$CLANG_URL_PUBLIC"
+                          fi
                       fi
                   else
                       echo "⬇️ Downloading Clang $CLANG_VERSION (public)..."
-                      curl -f -s -L "$CLANG_URL_PUBLIC" -o /tmp/clang.tar.gz
+                      download_clang "$CLANG_URL_PUBLIC"
                   fi
 
                   tar -xf /tmp/clang.tar.gz -C "$CLANG_DIR"
@@ -408,6 +425,7 @@ jobs:
               CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
               2>&1 | tee build.log; then
 
+              stop_monitor
               [[ -n "$MSG_ID" ]] && tg_edit "$MSG_ID" \
                   "❌ <b>Build Failed</b>%0ACheck attached log."
 
@@ -416,6 +434,8 @@ jobs:
 
               exit 1
           fi
+
+          stop_monitor
 
           if [[ "${ANALYSIS_TARGET}" != "None" \
                 && "${ANALYSIS_TARGET}" != "Full Kernel" \
