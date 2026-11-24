@@ -217,8 +217,8 @@ jobs:
           cd "$KERNEL_DIR"
 
           echo "🔧 Setting up KernelSU..."
-          echo "📌 Fetching KernelSU Branch: master"
-          curl -fsSL "https://raw.githubusercontent.com/backslashxx/KernelSU/refs/heads/master/kernel/setup.sh" | bash -s -- master
+          echo "📌 Fetching KernelSU Branch: main"
+          curl -fsSL "https://raw.githubusercontent.com/AzyrRuthless/KernelSU/refs/heads/main/kernel/setup.sh" | bash -s -- main
 
           echo "🔧 Setting up NoMount..."
           curl -fsSL "https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh" | bash -
