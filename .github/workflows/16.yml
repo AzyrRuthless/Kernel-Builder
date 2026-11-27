@@ -88,7 +88,7 @@ jobs:
           CLANG_VERSION="${CLANG_VERSION:-r639965}"
           readonly CLANG_DIR="$TOOLS_DIR/clang-$CLANG_VERSION"
           readonly DEFCONFIG="vendor/xiaomi/miatoll_defconfig"
-          readonly ANYKERNEL_BRANCH="Ivory"
+          readonly ANYKERNEL_BRANCH="master"
 
           stop_monitor() {
               if [[ -n "${MONITOR_PID:-}" ]]; then
