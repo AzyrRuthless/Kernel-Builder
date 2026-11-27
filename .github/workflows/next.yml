@@ -366,8 +366,7 @@ jobs:
           fi
 
           [[ -f out/arch/arm64/boot/dtbo.img ]] && cp out/arch/arm64/boot/dtbo.img anykernel/
-          mkdir -p anykernel/dtb
-          find out/arch/arm64/boot/dts/qcom -name "cust-atoll-ab.dtb" -exec cp {} anykernel/dtb/ \;
+          find out/arch/arm64/boot/dts/qcom -name "cust-atoll-ab.dtb" -exec cp {} anykernel/dtb \; -quit
 
           TIME_TAG=$(date '+%d%m%Y')
           if [[ -n "$RELEASE_VERSION" && "$RELEASE_VERSION" != "Test" ]]; then
