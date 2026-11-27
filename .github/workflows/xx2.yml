@@ -191,7 +191,7 @@ jobs:
 
           echo "🚀 Setup Environment..."
 
-          if [[ -n "${AOSP_COOKIE:-}" ]]; then
+          if [[ "$TOOLCHAIN" != "Neutron Clang" && -n "${AOSP_COOKIE:-}" ]]; then
               echo "🔑 Setting up AOSP Git credentials..."
               touch ~/.gitcookies
               chmod 600 ~/.gitcookies
